@@ -2,6 +2,7 @@ import Image from 'next/image';
 import { MASCOT_PALETTE, MASCOT_IMAGE, mascotEmoji } from '@/lib/mascots';
 import type { Mascot as MascotName } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { asset } from '@/lib/asset';
 
 const SIZE = {
   sm: { box: 'h-8 w-8',   text: 'text-xs',  px: 32 },
@@ -45,7 +46,7 @@ export function Mascot({
     >
       {image ? (
         <Image
-          src={image.src}
+          src={asset(image.src)}
           alt={name}
           width={s.px}
           height={s.px}

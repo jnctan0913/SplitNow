@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, actor as actorStore, passcode as passcodeStore } from '@/lib/api';
 import Image from 'next/image';
 import { Mascot } from '@/components/Mascot';
+import { asset } from '@/lib/asset';
 import type { Member } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -52,7 +53,7 @@ export default function Login() {
       <div className="min-h-[80vh] flex flex-col justify-center space-y-8">
         <div className="text-center space-y-2">
           <Image
-            src="/tokyo.png"
+            src={asset('/tokyo.png')}
             alt="Tokyo"
             width={640}
             height={640}

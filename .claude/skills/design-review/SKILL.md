@@ -1,0 +1,1 @@
+/Users/carrot.ning/Downloads/Cursor_Projects/TalentVerse_PM/.claude/skills/gstack/design-review/SKILL.md

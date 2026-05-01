@@ -1,0 +1,436 @@
+/**
+ * SplitNow - Google Apps Script backend.
+ *
+ * One-time setup:
+ *   1. Paste this file into the Apps Script editor of your spreadsheet.
+ *   2. Run setup() once (Run -> setup). Authorize when prompted.
+ *   3. Open the Settings sheet and set 'passcode' to your chosen code.
+ *   4. Deploy -> New deployment -> Web app
+ *      Execute as: Me
+ *      Who has access: Anyone
+ *      Copy the /exec URL into the Next.js app as NEXT_PUBLIC_SHEETS_API_URL.
+ *   5. After any code change, Deploy -> Manage deployments -> Edit -> New version.
+ */
+
+const SHEETS = {
+  members: 'Members',
+  expenses: 'Expenses',
+  rates: 'Rates',
+  settings: 'Settings',
+};
+
+const EXPENSE_HEADERS = [
+  'id', 'created_at', 'updated_at', 'date', 'day_num',
+  'category', 'description',
+  'amount', 'currency',
+  'amount_jpy', 'amount_sgd', 'amount_myr',
+  'paid_by', 'split_mode', 'split_data',
+  'last_edited_by', 'deleted_at',
+];
+
+const MEMBER_HEADERS = ['id', 'name', 'mascot', 'color', 'active'];
+const RATES_HEADERS = ['pair', 'rate', 'updated_at'];
+const SETTINGS_HEADERS = ['key', 'value', 'description'];
+
+const DEFAULT_MEMBERS = [
+  ['m1', 'Careen',   'StellaLou',  '#D8C8E8', true],
+  ['m2', 'Evelyn',   'LinaBell',   '#FFCCD5', true],
+  ['m3', 'Qi Hui',   'ShellieMay', '#F8C8C8', true],
+  ['m4', 'Cheok',    'OluMel',     '#C8E6D0', true],
+  ['m5', 'Wan Qian', 'CookieAnn',  '#FFE9A8', true],
+];
+
+const DEFAULT_CATEGORIES = ['Accommodation', 'Transport', 'Entertainment', 'Food', 'Shopping', 'Other'];
+const RATE_PAIRS = ['JPYSGD', 'SGDJPY', 'JPYMYR', 'MYRJPY', 'SGDMYR', 'MYRSGD'];
+
+// =====================================================================
+// SETUP
+// =====================================================================
+
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSheet_(ss, SHEETS.members,  MEMBER_HEADERS);
+  ensureSheet_(ss, SHEETS.expenses, EXPENSE_HEADERS);
+  ensureSheet_(ss, SHEETS.rates,    RATES_HEADERS);
+  ensureSheet_(ss, SHEETS.settings, SETTINGS_HEADERS);
+
+  seedMembersIfEmpty_(ss);
+  seedRatesIfEmpty_(ss);
+  seedSettingsIfEmpty_(ss);
+
+  SpreadsheetApp.getUi().alert(
+    'Setup complete.\n\n' +
+    '1. Open Settings sheet and set passcode.\n' +
+    '2. Deploy -> New deployment -> Web app (Execute: Me, Access: Anyone).\n' +
+    '3. Copy the /exec URL into the Next.js app.'
+  );
+}
+
+function ensureSheet_(ss, name, headers) {
+  let sh = ss.getSheetByName(name);
+  if (!sh) sh = ss.insertSheet(name);
+  if (sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+}
+
+function seedMembersIfEmpty_(ss) {
+  const sh = ss.getSheetByName(SHEETS.members);
+  if (sh.getLastRow() > 1) return;
+  sh.getRange(2, 1, DEFAULT_MEMBERS.length, MEMBER_HEADERS.length).setValues(DEFAULT_MEMBERS);
+}
+
+function seedRatesIfEmpty_(ss) {
+  const sh = ss.getSheetByName(SHEETS.rates);
+  if (sh.getLastRow() > 1) return;
+  const rows = RATE_PAIRS.map(p => {
+    const from = p.slice(0, 3), to = p.slice(3, 6);
+    return [p, `=GOOGLEFINANCE("CURRENCY:${from}${to}")`, '=NOW()'];
+  });
+  sh.getRange(2, 1, rows.length, RATES_HEADERS.length).setValues(rows);
+}
+
+function seedSettingsIfEmpty_(ss) {
+  const sh = ss.getSheetByName(SHEETS.settings);
+  if (sh.getLastRow() > 1) return;
+  const rows = [
+    ['passcode',   'CHANGE_ME',                     'Shared passcode required for all writes - update before sharing'],
+    ['trip_name',  'Tokyo May-Jun 2026',            'Display name'],
+    ['trip_start', '2026-05-26',                    'ISO date'],
+    ['trip_end',   '2026-06-02',                    'ISO date'],
+    ['categories', JSON.stringify(DEFAULT_CATEGORIES), 'JSON array of expense categories'],
+  ];
+  sh.getRange(2, 1, rows.length, SETTINGS_HEADERS.length).setValues(rows);
+}
+
+// =====================================================================
+// HTTP HANDLERS
+// =====================================================================
+
+function doGet(e) {
+  return handle_(e, (params) => {
+    const action = params.action;
+    if (action === 'bootstrap')  return bootstrap_();
+    if (action === 'expenses')   return listExpenses_();
+    if (action === 'rates')      return getRates_();
+    if (action === 'settlement') return computeSettlement_(params.currency || 'SGD');
+    throw new Error('Unknown action: ' + action);
+  });
+}
+
+function doPost(e) {
+  return handle_(e, () => {
+    const body = JSON.parse(e.postData.contents || '{}');
+    requirePasscode_(body.passcode);
+    const action = body.action;
+    if (action === 'addExpense')    return addExpense_(body.expense, body.actor);
+    if (action === 'updateExpense') return updateExpense_(body.id, body.fields, body.actor);
+    if (action === 'deleteExpense') return deleteExpense_(body.id, body.actor);
+    if (action === 'verify')        return { ok: true };
+    throw new Error('Unknown action: ' + action);
+  });
+}
+
+function handle_(e, fn) {
+  try {
+    const params = (e && e.parameter) || {};
+    if (params.action === 'rates' || params.action === 'bootstrap' || params.action === 'expenses' || params.action === 'settlement') {
+      requirePasscode_(params.passcode);
+    }
+    const out = fn(params);
+    return json_({ ok: true, data: out });
+  } catch (err) {
+    return json_({ ok: false, error: String(err.message || err) });
+  }
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function requirePasscode_(provided) {
+  const expected = getSetting_('passcode');
+  if (!expected) throw new Error('Passcode not configured. Set Settings.passcode.');
+  if (String(provided || '') !== String(expected)) throw new Error('Invalid passcode');
+}
+
+// =====================================================================
+// READ
+// =====================================================================
+
+function bootstrap_() {
+  return {
+    members:    listMembers_(),
+    settings:   listSettings_(),
+    rates:      getRates_(),
+    expenses:   listExpenses_(),
+  };
+}
+
+function listMembers_() {
+  return readSheet_(SHEETS.members).filter(r => r.active === true || r.active === 'TRUE');
+}
+
+function listSettings_() {
+  const rows = readSheet_(SHEETS.settings);
+  const out = {};
+  rows.forEach(r => { out[r.key] = r.value; });
+  if (out.categories) {
+    try { out.categories = JSON.parse(out.categories); } catch (_) {}
+  }
+  delete out.passcode; // never leak
+  return out;
+}
+
+function listExpenses_() {
+  return readSheet_(SHEETS.expenses).filter(r => !r.deleted_at);
+}
+
+function getRates_() {
+  const rows = readSheet_(SHEETS.rates);
+  const out = {};
+  rows.forEach(r => { out[r.pair] = Number(r.rate); });
+  return out;
+}
+
+function getSetting_(key) {
+  const sh = sheet_(SHEETS.settings);
+  const data = sh.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === key) return data[i][1];
+  }
+  return null;
+}
+
+// =====================================================================
+// WRITE - EXPENSES
+// =====================================================================
+
+function addExpense_(expense, actor) {
+  validateExpense_(expense);
+  const id = 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const now = new Date().toISOString();
+  const snaps = computeSnapshots_(expense.amount, expense.currency);
+
+  const row = EXPENSE_HEADERS.map(h => {
+    switch (h) {
+      case 'id':              return id;
+      case 'created_at':      return now;
+      case 'updated_at':      return now;
+      case 'date':            return expense.date;
+      case 'day_num':         return expense.day_num || dayNumFromDate_(expense.date);
+      case 'category':        return expense.category;
+      case 'description':     return expense.description || '';
+      case 'amount':          return Number(expense.amount);
+      case 'currency':        return expense.currency;
+      case 'amount_jpy':      return snaps.JPY;
+      case 'amount_sgd':      return snaps.SGD;
+      case 'amount_myr':      return snaps.MYR;
+      case 'paid_by':         return expense.paid_by;
+      case 'split_mode':      return expense.split_mode;
+      case 'split_data':      return JSON.stringify(expense.split_data || {});
+      case 'last_edited_by':  return actor || '';
+      case 'deleted_at':      return '';
+      default:                return '';
+    }
+  });
+
+  sheet_(SHEETS.expenses).appendRow(row);
+  return findExpenseById_(id);
+}
+
+function updateExpense_(id, fields, actor) {
+  const sh = sheet_(SHEETS.expenses);
+  const rowIdx = findRowIndexById_(sh, id);
+  if (rowIdx === -1) throw new Error('Expense not found: ' + id);
+
+  const headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const current = sh.getRange(rowIdx, 1, 1, headerRow.length).getValues()[0];
+  const get = (h) => current[headerRow.indexOf(h)];
+  const set = (h, v) => { current[headerRow.indexOf(h)] = v; };
+
+  // If amount or currency changed, re-snapshot
+  const amountChanged   = fields.amount   !== undefined && Number(fields.amount)   !== Number(get('amount'));
+  const currencyChanged = fields.currency !== undefined && fields.currency        !== get('currency');
+
+  Object.keys(fields).forEach(k => {
+    if (!EXPENSE_HEADERS.includes(k)) return;
+    if (k === 'split_data') set(k, JSON.stringify(fields[k]));
+    else set(k, fields[k]);
+  });
+
+  if (amountChanged || currencyChanged) {
+    const snaps = computeSnapshots_(get('amount'), get('currency'));
+    set('amount_jpy', snaps.JPY);
+    set('amount_sgd', snaps.SGD);
+    set('amount_myr', snaps.MYR);
+  }
+
+  set('updated_at', new Date().toISOString());
+  if (actor) set('last_edited_by', actor);
+
+  sh.getRange(rowIdx, 1, 1, headerRow.length).setValues([current]);
+  return findExpenseById_(id);
+}
+
+function deleteExpense_(id, actor) {
+  const sh = sheet_(SHEETS.expenses);
+  const rowIdx = findRowIndexById_(sh, id);
+  if (rowIdx === -1) throw new Error('Expense not found: ' + id);
+  const headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const colDeleted = headerRow.indexOf('deleted_at') + 1;
+  const colEditor  = headerRow.indexOf('last_edited_by') + 1;
+  const colUpdated = headerRow.indexOf('updated_at') + 1;
+  sh.getRange(rowIdx, colDeleted).setValue(new Date().toISOString());
+  sh.getRange(rowIdx, colUpdated).setValue(new Date().toISOString());
+  if (actor) sh.getRange(rowIdx, colEditor).setValue(actor);
+  return { id, deleted: true };
+}
+
+function validateExpense_(e) {
+  if (!e) throw new Error('Missing expense');
+  if (typeof e.amount !== 'number' && isNaN(Number(e.amount))) throw new Error('amount must be a number');
+  if (!['JPY', 'SGD', 'MYR'].includes(e.currency)) throw new Error('currency must be JPY/SGD/MYR');
+  if (!e.date) throw new Error('date required');
+  if (!e.category) throw new Error('category required');
+  if (!e.paid_by) throw new Error('paid_by required');
+  if (!['equal', 'amount', 'percent'].includes(e.split_mode)) throw new Error('split_mode must be equal/amount/percent');
+}
+
+// =====================================================================
+// FX SNAPSHOTS
+// =====================================================================
+
+function computeSnapshots_(amount, currency) {
+  const a = Number(amount);
+  const rates = getRates_();
+  const r = (pair) => Number(rates[pair]);
+  const out = { JPY: null, SGD: null, MYR: null };
+  out[currency] = a;
+  if (currency === 'JPY') { out.SGD = a * r('JPYSGD'); out.MYR = a * r('JPYMYR'); }
+  if (currency === 'SGD') { out.JPY = a * r('SGDJPY'); out.MYR = a * r('SGDMYR'); }
+  if (currency === 'MYR') { out.JPY = a * r('MYRJPY'); out.SGD = a * r('MYRSGD'); }
+  return {
+    JPY: round_(out.JPY, 0),
+    SGD: round_(out.SGD, 2),
+    MYR: round_(out.MYR, 2),
+  };
+}
+
+function round_(n, dp) {
+  if (n == null || isNaN(n)) return null;
+  const f = Math.pow(10, dp);
+  return Math.round(n * f) / f;
+}
+
+// =====================================================================
+// SETTLEMENT (greedy, returns amounts in chosen currency)
+// =====================================================================
+
+function computeSettlement_(currency) {
+  const cur = ['JPY', 'SGD', 'MYR'].includes(currency) ? currency : 'SGD';
+  const col = 'amount_' + cur.toLowerCase();
+  const expenses = listExpenses_();
+  const members = listMembers_();
+  const totals = {}; // memberId -> net (paid - share)
+  members.forEach(m => totals[m.id] = 0);
+
+  expenses.forEach(e => {
+    const total = Number(e[col]) || 0;
+    totals[e.paid_by] = (totals[e.paid_by] || 0) + total;
+
+    const splits = computeShares_(e, total);
+    Object.keys(splits).forEach(mid => {
+      totals[mid] = (totals[mid] || 0) - splits[mid];
+    });
+  });
+
+  // Greedy: largest creditor pays largest debtor
+  const dp = cur === 'JPY' ? 0 : 2;
+  const balances = members.map(m => ({ id: m.id, name: m.name, mascot: m.mascot, net: round_(totals[m.id] || 0, dp) }));
+  const transfers = greedyTransfers_(balances, dp);
+  return { currency: cur, balances, transfers };
+}
+
+function computeShares_(e, total) {
+  const split = (() => { try { return JSON.parse(e.split_data || '{}'); } catch (_) { return {}; } })();
+  const mode = e.split_mode;
+  const out = {};
+  if (mode === 'equal') {
+    const ids = Object.keys(split).length ? Object.keys(split) : null;
+    const members = ids || listMembers_().map(m => m.id);
+    const each = total / members.length;
+    members.forEach(id => { out[id] = each; });
+    return out;
+  }
+  if (mode === 'amount') {
+    Object.keys(split).forEach(id => { out[id] = Number(split[id]) || 0; });
+    return out;
+  }
+  if (mode === 'percent') {
+    Object.keys(split).forEach(id => { out[id] = total * (Number(split[id]) || 0) / 100; });
+    return out;
+  }
+  return out;
+}
+
+function greedyTransfers_(balances, dp) {
+  const eps = dp === 0 ? 0.5 : 0.005;
+  const arr = balances.map(b => ({ id: b.id, name: b.name, mascot: b.mascot, net: b.net }));
+  const transfers = [];
+  while (true) {
+    arr.sort((a, b) => a.net - b.net);
+    const debtor   = arr[0];
+    const creditor = arr[arr.length - 1];
+    if (creditor.net <= eps || debtor.net >= -eps) break;
+    const amt = round_(Math.min(creditor.net, -debtor.net), dp);
+    if (amt <= eps) break;
+    transfers.push({ from: debtor.id, from_name: debtor.name, from_mascot: debtor.mascot, to: creditor.id, to_name: creditor.name, to_mascot: creditor.mascot, amount: amt });
+    debtor.net   = round_(debtor.net   + amt, dp);
+    creditor.net = round_(creditor.net - amt, dp);
+  }
+  return transfers;
+}
+
+// =====================================================================
+// HELPERS
+// =====================================================================
+
+function sheet_(name) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sh) throw new Error('Sheet not found: ' + name + '. Run setup().');
+  return sh;
+}
+
+function readSheet_(name) {
+  const sh = sheet_(name);
+  const range = sh.getDataRange().getValues();
+  if (range.length < 2) return [];
+  const headers = range[0];
+  return range.slice(1).map(row => {
+    const o = {};
+    headers.forEach((h, i) => { o[h] = row[i]; });
+    return o;
+  });
+}
+
+function findRowIndexById_(sh, id) {
+  const data = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), 1).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === id) return i + 2;
+  }
+  return -1;
+}
+
+function findExpenseById_(id) {
+  return listExpenses_().find(e => e.id === id) || null;
+}
+
+function dayNumFromDate_(dateStr) {
+  const start = getSetting_('trip_start');
+  if (!start) return null;
+  const d1 = new Date(start);
+  const d2 = new Date(dateStr);
+  return Math.max(1, Math.floor((d2 - d1) / 86400000) + 1);
+}

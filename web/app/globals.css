@@ -1,0 +1,60 @@
+@import "tailwindcss";
+@import "@flaticon/flaticon-uicons/css/solid/rounded.css";
+
+@theme {
+  /* Duffy and Friends pastel palette */
+  --color-cream: #FFF6E9;
+  --color-cream-soft: #FFFBF2;
+  --color-peach: #FFD4B8;
+  --color-peach-deep: #F8B591;
+  --color-mint: #C8E6D0;
+  --color-mint-deep: #9DD0AC;
+  --color-lavender: #D8C8E8;
+  --color-lavender-deep: #BCA4D6;
+  --color-blush: #FFCCD5;
+  --color-blush-deep: #FFA8B8;
+  --color-sky: #C8DDF0;
+  --color-sunny: #FFE9A8;
+  --color-honey: #E8B86C;
+  --color-cocoa: #6B4F3F;
+  --color-cocoa-soft: #8C7060;
+
+  --color-background: var(--color-cream);
+  --color-foreground: var(--color-cocoa);
+
+  --font-sans: ui-rounded, "Hiragino Maru Gothic ProN", "Quicksand", -apple-system, system-ui, sans-serif;
+
+  --radius-pillow: 1.25rem;
+  --radius-plush: 1.75rem;
+}
+
+html, body {
+  background: var(--color-cream);
+  color: var(--color-cocoa);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle pastel paper texture on the body */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 204, 213, 0.25), transparent 35%),
+    radial-gradient(circle at 88% 22%, rgba(216, 200, 232, 0.25), transparent 35%),
+    radial-gradient(circle at 18% 86%, rgba(200, 230, 208, 0.22), transparent 40%),
+    radial-gradient(circle at 82% 88%, rgba(200, 221, 240, 0.22), transparent 40%);
+}
+
+/* Reusable plush card */
+.card-plush {
+  background: white;
+  border-radius: var(--radius-plush);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 4px 16px -6px rgba(107, 79, 63, 0.12),
+    0 2px 6px -2px rgba(107, 79, 63, 0.08);
+}

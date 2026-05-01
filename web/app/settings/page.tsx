@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, actor as actorStore, passcode as passcodeStore } from '@/lib/api';
+import { api, actor as actorStore, passcode as passcodeStore, clearBootCache } from '@/lib/api';
 import type { Bootstrap } from '@/lib/types';
 import { Mascot } from '@/components/Mascot';
 import { categoryIcon } from '@/lib/categories';
@@ -17,7 +17,13 @@ export default function Settings() {
       router.replace('/login');
       return;
     }
-    api.bootstrap().then(setBoot).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    const cached = api.bootstrapCache();
+    if (cached) setBoot(cached);
+    api.bootstrap()
+      .then(setBoot)
+      .catch((e) => {
+        if (!cached) setError(e instanceof Error ? e.message : String(e));
+      });
   }, [router]);
 
   if (error) {
@@ -41,6 +47,7 @@ export default function Settings() {
   function logout() {
     actorStore.clear();
     passcodeStore.clear();
+    clearBootCache();
     router.replace('/login');
   }
 

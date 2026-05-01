@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, actor as actorStore, passcode as passcodeStore, applyExpenseChange } from '@/lib/api';
+import { api, actor as actorStore, passcode as passcodeStore, applyExpenseChange, clearBootCache } from '@/lib/api';
 import type { Bootstrap, Settlement, Member } from '@/lib/types';
 import type { CurrencyCode } from '@/lib/currency';
 import { CURRENCY_CODES, CURRENCIES } from '@/lib/currency';
@@ -41,6 +41,12 @@ export default function Dashboard() {
       router.replace('/login');
       return;
     }
+    const cached = api.bootstrapCache();
+    if (cached) {
+      setBoot(cached);
+      setMe(cached.members.find((m) => m.id === actorStore.get()) ?? null);
+      setLoading(false);
+    }
     (async () => {
       try {
         const b = await api.bootstrap();
@@ -48,7 +54,7 @@ export default function Dashboard() {
         setMe(b.members.find((m) => m.id === actorStore.get()) ?? null);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        setError(msg);
+        if (!cached) setError(msg);
         if (msg.toLowerCase().includes('passcode')) {
           passcodeStore.clear();
           actorStore.clear();
@@ -112,6 +118,7 @@ function Header({ tripName, me }: { tripName: string; me: Member }) {
         onClick={() => {
           actorStore.clear();
           passcodeStore.clear();
+          clearBootCache();
           router.push('/login');
         }}
         aria-label="Switch user"

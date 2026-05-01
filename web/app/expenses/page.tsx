@@ -37,13 +37,18 @@ export default function ExpensesPage() {
       router.replace('/login');
       return;
     }
+    const cached = api.bootstrapCache();
+    if (cached) {
+      setBoot(cached);
+      setLoading(false);
+    }
     (async () => {
       try {
         const b = await api.bootstrap();
         setBoot(b);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        setError(msg);
+        if (!cached) setError(msg);
         if (msg.toLowerCase().includes('passcode')) {
           passcodeStore.clear();
           actorStore.clear();

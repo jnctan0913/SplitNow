@@ -22,6 +22,7 @@ if (!API_URL) {
 
 const PASSCODE_KEY = 'travel_log_passcode';
 const ACTOR_KEY = 'travel_log_actor';
+const BOOT_CACHE_KEY = 'travel_log_bootstrap_cache_v1';
 
 export const passcode = {
   get: () => (typeof window === 'undefined' ? '' : localStorage.getItem(PASSCODE_KEY) ?? ''),
@@ -64,9 +65,35 @@ async function post<T>(action: string, payload: Record<string, unknown> = {}): P
   return json.data as T;
 }
 
+function readBootCache(): Bootstrap | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(BOOT_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { data: Bootstrap };
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBootCache(data: Bootstrap) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(BOOT_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
+
+export function clearBootCache() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(BOOT_CACHE_KEY);
+}
+
 export const api = {
   verify: (code: string) => post<{ ok: true }>('verify', { passcode: code }),
-  bootstrap: () => get<Bootstrap>('bootstrap'),
+  // Always hits the network. Use bootstrapCached for stale-while-revalidate.
+  bootstrap: () => get<Bootstrap>('bootstrap').then((b) => { writeBootCache(b); return b; }),
+  bootstrapCache: readBootCache,
   listExpenses: () => get<Expense[]>('expenses'),
   rates: () => get<Rates>('rates'),
   settlement: (currency: CurrencyCode) => get<Settlement>('settlement', { currency }),

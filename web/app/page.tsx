@@ -266,8 +266,8 @@ function SettlementList({ settlement, myId }: { settlement: Settlement; myId: st
 function FabAdd({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="fixed bottom-6 right-6 w-14 h-14 rounded-full font-bold text-2xl shadow-lg flex items-center justify-center"
-      style={{ background: 'var(--color-peach-deep)', color: 'var(--color-cocoa)' }}
+      className="fixed right-6 z-50 w-14 h-14 rounded-full font-bold text-2xl shadow-lg flex items-center justify-center"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)', background: 'var(--color-peach-deep)', color: 'var(--color-cocoa)' }}
       aria-label="Add expense"
       onClick={onClick}
     >

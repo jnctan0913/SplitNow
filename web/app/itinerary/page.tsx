@@ -120,7 +120,7 @@ export default function ItineraryPage() {
   const groups = useMemo<DayGroup[]>(() => {
     if (!boot || !items) return [];
     const total = tripDayCount(boot.settings.trip_start, boot.settings.trip_end);
-    const live = items.filter((i) => !i.deleted_at);
+    const live = items.filter((i): i is ItineraryItem => !!i && !i.deleted_at);
     const byDay = new Map<number, ItineraryItem[]>();
     for (const it of live) {
       const arr = byDay.get(it.day_num) ?? [];
@@ -172,7 +172,7 @@ export default function ItineraryPage() {
   if (error && !boot) return <ErrorState message={error} />;
   if (!boot) return null;
 
-  const hasAny = (items ?? []).some((i) => !i.deleted_at);
+  const hasAny = (items ?? []).some((i) => !!i && !i.deleted_at);
 
   return (
     <div className="space-y-4">
@@ -226,7 +226,7 @@ export default function ItineraryPage() {
         settings={boot.settings}
         initialDayNum={addDayNum}
         getNextPosition={(d) => {
-          const list = (items ?? []).filter((i) => !i.deleted_at && i.day_num === d);
+          const list = (items ?? []).filter((i): i is ItineraryItem => !!i && !i.deleted_at && i.day_num === d);
           if (!list.length) return 1;
           return Math.max(...list.map((i) => i.position || 0)) + 1;
         }}

@@ -196,18 +196,20 @@ export function timeToMinutes(input: string | null | undefined): number | null {
   const raw = String(input).trim();
   if (!raw) return null;
 
-  // Range: take the start time as the sort key.
-  const first = raw.split(/\s*(?:-|—|–|to)\s*/i)[0].trim();
-  if (!first) return null;
-
-  // ISO datetime that Sheets uses for time-only cells. See note in normalizePart
-  // about the +6h55m LMT offset.
-  if (/^1899-12-\d{2}T/.test(first)) {
-    const d = new Date(first);
+  // ISO datetime that Sheets uses for time-only cells. Check this BEFORE
+  // splitting on hyphens, because the ISO string itself contains hyphens
+  // ("1899-12-30T03:04:35Z") and the range-splitter would shred it. See
+  // the +6h55m LMT note in normalizePart.
+  if (/^1899-12-\d{2}T/.test(raw)) {
+    const d = new Date(raw);
     if (!isNaN(d.getTime())) {
       return (d.getUTCHours() * 60 + d.getUTCMinutes() + 6 * 60 + 55) % (24 * 60);
     }
   }
+
+  // Range like "10AM - 6PM": take the start time as the sort key.
+  const first = raw.split(/\s*(?:-|—|–|to)\s*/i)[0].trim();
+  if (!first) return null;
 
   const upper = first.toUpperCase();
 

@@ -1,9 +1,10 @@
 import type { Bootstrap, Expense, ItineraryItem, Settlement, Rates, SplitMode } from './types';
 import { trip } from './trips';
 
-export function applyExpenseChange(list: Expense[], change: Expense): Expense[] {
-  if (change.deleted_at) return list.filter((e) => e.id !== change.id);
-  const idx = list.findIndex((e) => e.id === change.id);
+export function applyExpenseChange(list: Expense[], change: Expense | null | undefined): Expense[] {
+  if (!change) return list;
+  if (change.deleted_at) return list.filter((e) => e && e.id !== change.id);
+  const idx = list.findIndex((e) => e && e.id === change.id);
   if (idx >= 0) {
     const next = list.slice();
     next[idx] = change;
@@ -14,10 +15,11 @@ export function applyExpenseChange(list: Expense[], change: Expense): Expense[] 
 
 export function applyItineraryChange(
   list: ItineraryItem[],
-  change: ItineraryItem,
+  change: ItineraryItem | null | undefined,
 ): ItineraryItem[] {
-  if (change.deleted_at) return list.filter((i) => i.id !== change.id);
-  const idx = list.findIndex((i) => i.id === change.id);
+  if (!change) return list;
+  if (change.deleted_at) return list.filter((i) => i && i.id !== change.id);
+  const idx = list.findIndex((i) => i && i.id === change.id);
   if (idx >= 0) {
     const next = list.slice();
     next[idx] = change;
@@ -120,7 +122,10 @@ export function readItineraryCache(): ItineraryItem[] | null {
     const raw = window.localStorage.getItem(ITIN_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { data: ItineraryItem[] };
-    return parsed.data ?? null;
+    if (!Array.isArray(parsed.data)) return null;
+    // Scrub null/undefined entries that may have been written by older
+    // builds; downstream code accesses .deleted_at without further guards.
+    return parsed.data.filter((i): i is ItineraryItem => !!i);
   } catch {
     return null;
   }
@@ -150,7 +155,11 @@ export const api = {
   updateExpense: (id: string, fields: Partial<NewExpenseInput>) =>
     post<Expense>('updateExpense', { id, fields }),
   deleteExpense: (id: string) => post<{ id: string; deleted: true }>('deleteExpense', { id }),
-  itinerary: () => get<ItineraryItem[]>('itinerary').then((items) => { writeItineraryCache(items); return items; }),
+  itinerary: () => get<ItineraryItem[]>('itinerary').then((items) => {
+    const clean = Array.isArray(items) ? items.filter((i): i is ItineraryItem => !!i) : [];
+    writeItineraryCache(clean);
+    return clean;
+  }),
   addItinerary: (item: NewItineraryInput) => post<ItineraryItem>('addItinerary', { item }),
   updateItinerary: (id: string, fields: Partial<NewItineraryInput>) =>
     post<ItineraryItem>('updateItinerary', { id, fields }),

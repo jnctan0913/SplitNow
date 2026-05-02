@@ -84,9 +84,14 @@ const DEFAULT_ITINERARY_HELP = [
   'Required columns: day_num, date, title, category.',
   'Optional: time, notes, map_url, link, cost_note.',
   '',
-  'When done, open the Travel Log menu (top of the spreadsheet, after Help) and click "Fix itinerary rows". It auto-fills id, created_at, updated_at, time_fixed, and position for any new rows. Existing values are never overwritten.',
+  'Helpful menu items (top of the spreadsheet, "Travel Log" menu after Help):',
+  ' • Fix itinerary rows — fills id, created_at, updated_at, time_fixed, position for new rows. Never overwrites existing values.',
+  ' • Validate itinerary rows — scans for typos: invalid category, day_num out of range, missing title/date, unknown member id, duplicate ids.',
+  ' • Apply itinerary validation rules — re-attaches dropdowns and warning indicators in case they get cleared.',
   '',
-  'Refresh the app to see the changes. Tap-to-edit and tap-to-delete only work after the row has an id, which the menu action takes care of.',
+  'Cells with invalid values show a red triangle. Hover any column header for guidance on what it accepts.',
+  '',
+  'Refresh the app to see the changes. Tap-to-edit and tap-to-delete only work after the row has an id, which "Fix itinerary rows" takes care of.',
 ].join('\n');
 
 // All from->to pairs across the trip's currencies. e.g. for [CNY,SGD,MYR] this
@@ -117,6 +122,9 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Travel Log')
     .addItem('Fix itinerary rows (assign id + timestamps)', 'fixItineraryRows')
+    .addItem('Validate itinerary rows', 'validateItineraryRows')
+    .addItem('Apply itinerary validation rules', 'applyItineraryValidation')
+    .addSeparator()
     .addItem('Reseed exchange rate pairs (after currency change)', 'reseedRates')
     .addSeparator()
     .addItem('Re-run setup() (idempotent)', 'setup')
@@ -176,6 +184,166 @@ function fixItineraryRows() {
   ui.alert('Fixed ' + fixed + ' itinerary row' + (fixed === 1 ? '' : 's') + '.');
 }
 
+// Menu-callable wrapper: applies validation and shows a confirmation.
+function applyItineraryValidation() {
+  applyItineraryValidation_();
+  SpreadsheetApp.getUi().alert(
+    'Itinerary validation rules applied.\n\n' +
+    'Cells with invalid values now show a red triangle. Hover the column header for guidance on what each column accepts.',
+  );
+}
+
+// Applies in-cell data validation rules to the Itinerary sheet so users
+// see a red triangle on cells with invalid values (warn-and-accept mode,
+// to keep bulk-paste workflows working). Idempotent; safe to re-run.
+function applyItineraryValidation_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = sheet_(SHEETS.itinerary);
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const colOf = function (h) { return headers.indexOf(h) + 1; };
+  const maxRows = sh.getMaxRows();
+  const rowsBelowHeader = Math.max(maxRows - 1, 1);
+  const tripDays = computeTripDays_();
+
+  // category dropdown
+  if (colOf('category') > 0) {
+    const r = sh.getRange(2, colOf('category'), rowsBelowHeader);
+    r.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInList(DEFAULT_CATEGORIES, true)
+      .setAllowInvalid(true)
+      .setHelpText('Must be one of: ' + DEFAULT_CATEGORIES.join(', '))
+      .build());
+  }
+
+  // day_num: integer 1..tripDays
+  if (colOf('day_num') > 0) {
+    const r = sh.getRange(2, colOf('day_num'), rowsBelowHeader);
+    r.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireNumberBetween(1, tripDays)
+      .setAllowInvalid(true)
+      .setHelpText('Whole number 1 to ' + tripDays + ' (trip length).')
+      .build());
+  }
+
+  // date: parseable as a date
+  if (colOf('date') > 0) {
+    const r = sh.getRange(2, colOf('date'), rowsBelowHeader);
+    r.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireDate()
+      .setAllowInvalid(true)
+      .setHelpText('YYYY-MM-DD (this column is text-formatted to preserve the literal value).')
+      .build());
+  }
+
+  // time_fixed: checkbox
+  if (colOf('time_fixed') > 0) {
+    const r = sh.getRange(2, colOf('time_fixed'), rowsBelowHeader);
+    r.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireCheckbox()
+      .setAllowInvalid(true)
+      .build());
+  }
+
+  // last_edited_by: dropdown of live member ids from the Members sheet
+  const membersSh = ss.getSheetByName(SHEETS.members);
+  if (colOf('last_edited_by') > 0 && membersSh) {
+    const r = sh.getRange(2, colOf('last_edited_by'), rowsBelowHeader);
+    r.setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInRange(membersSh.getRange('A2:A'), true)
+      .setAllowInvalid(true)
+      .setHelpText('Member id from the Members sheet (m1, m2, ...).')
+      .build());
+  }
+
+  setItineraryHeaderNotes_(sh, headers, tripDays);
+}
+
+// Adds hover notes on the Itinerary header cells so contributors see
+// what each column expects without having to read documentation.
+function setItineraryHeaderNotes_(sh, headers, tripDays) {
+  const notes = {
+    id:             'Auto-generated. Leave blank when bulk-pasting; "Fix itinerary rows" menu fills it.',
+    created_at:     'Auto-generated. Leave blank when bulk-pasting.',
+    updated_at:     'Auto-generated.',
+    day_num:        'Whole number 1..' + tripDays + ' (trip length). Required.',
+    date:           'YYYY-MM-DD. Required.',
+    time:           'HH:MM 24-hour. Optional. The app canonicalizes app-entered times; bulk paste should already use HH:MM.',
+    time_fixed:     'Checkbox. TRUE if the time is exact, FALSE/blank for "approximate".',
+    title:          'Required.',
+    notes:          'Free text.',
+    category:       'One of: ' + DEFAULT_CATEGORIES.join(', ') + '. Required.',
+    map_url:        'Optional URL.',
+    link:           'Optional URL.',
+    cost_note:      'Free text.',
+    position:       'Auto-set by "Fix itinerary rows". Override only if you need a specific intra-day order.',
+    last_edited_by: 'Member id (m1, m2, ...). Auto-set when edited via app.',
+    deleted_at:     'Soft-delete timestamp. Leave blank.',
+  };
+  Object.keys(notes).forEach(function (h) {
+    const c = headers.indexOf(h) + 1;
+    if (c > 0) sh.getRange(1, c).setNote(notes[h]);
+  });
+}
+
+// Trip length in days, derived from Settings.trip_start/trip_end if
+// present, else from TRIP_INFO. Fallback of 30 covers edge cases.
+function computeTripDays_() {
+  const start = getSetting_('trip_start') || TRIP_INFO.start;
+  const end   = getSetting_('trip_end')   || TRIP_INFO.end;
+  if (!start || !end) return 30;
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (!isFinite(ms)) return 30;
+  return Math.max(1, Math.round(ms / 86400000) + 1);
+}
+
+// Diagnostic: scans the Itinerary tab and reports rows with invalid
+// or missing required values. Read-only. Use after a bulk paste to
+// catch typos before they reach the app.
+function validateItineraryRows() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = sheet_(SHEETS.itinerary);
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) { ui.alert('No itinerary rows.'); return; }
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const data = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const col = function (h) { return headers.indexOf(h); };
+
+  const memberIds = readSheet_(SHEETS.members).map(function (m) { return m.id; });
+  const tripDays = computeTripDays_();
+  const issues = [];
+  const seenIds = {};
+
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    const rowNum = i + 2;
+
+    const id = r[col('id')];
+    if (id) {
+      if (seenIds[id]) issues.push('Row ' + rowNum + ': duplicate id "' + id + '" (also in row ' + seenIds[id] + ')');
+      seenIds[id] = rowNum;
+    }
+    if (!r[col('title')]) issues.push('Row ' + rowNum + ': title is empty');
+    const cat = r[col('category')];
+    if (!cat) issues.push('Row ' + rowNum + ': category is empty');
+    else if (DEFAULT_CATEGORIES.indexOf(cat) === -1) issues.push('Row ' + rowNum + ': category "' + cat + '" not in [' + DEFAULT_CATEGORIES.join(', ') + ']');
+    const dn = Number(r[col('day_num')]);
+    if (!Number.isInteger(dn) || dn < 1 || dn > tripDays) issues.push('Row ' + rowNum + ': day_num "' + r[col('day_num')] + '" not in 1..' + tripDays);
+    if (!r[col('date')]) issues.push('Row ' + rowNum + ': date is empty');
+    const eb = r[col('last_edited_by')];
+    if (eb && memberIds.indexOf(eb) === -1) issues.push('Row ' + rowNum + ': last_edited_by "' + eb + '" is not a known member id');
+  }
+
+  if (issues.length === 0) {
+    ui.alert('All ' + data.length + ' itinerary rows look valid.');
+    return;
+  }
+  const shown = issues.slice(0, 50).join('\n');
+  const overflow = issues.length > 50 ? '\n\n... and ' + (issues.length - 50) + ' more.' : '';
+  ui.alert(issues.length + ' itinerary issue' + (issues.length === 1 ? '' : 's'), shown + overflow, ui.ButtonSet.OK);
+}
+
 // Wipes the Rates sheet body and reseeds from RATE_PAIRS (derived from
 // TRIP_CURRENCIES). Run this after editing TRIP_CURRENCIES at the top of
 // Code.gs so the GoogleFinance formulas update to the new currency triple.
@@ -215,6 +383,14 @@ function setup() {
   seedRatesIfEmpty_(ss);
   seedSettingsIfEmpty_(ss);
   forceTextColumns_(ss);
+
+  // Best-effort: apply itinerary data validation rules. Uses the private
+  // helper so setup() doesn't surface a second confirmation dialog on top
+  // of its own. Wrapped because requireValueInRange needs the Members
+  // sheet to exist; if anything fails we don't want to block setup().
+  try { applyItineraryValidation_(); } catch (err) {
+    Logger.log('applyItineraryValidation_ skipped: ' + err);
+  }
 
   SpreadsheetApp.getUi().alert(
     'Setup complete.\n\n' +

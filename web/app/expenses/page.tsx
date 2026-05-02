@@ -8,9 +8,10 @@ import type { Bootstrap, Expense, Member } from '@/lib/types';
 import { CURRENCY_CODES, CURRENCIES, type CurrencyCode } from '@/lib/currency';
 import { Mascot } from '@/components/Mascot';
 import { ExpenseSheet } from '@/components/ExpenseSheet';
+import { PaymentSheet } from '@/components/PaymentSheet';
 import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { categoryIcon } from '@/lib/categories';
+import { categoryIcon, isPayment } from '@/lib/categories';
 
 type Group = { date: string; dayNum: number; items: Expense[] };
 
@@ -22,6 +23,8 @@ export default function ExpensesPage() {
   const [currency, setCurrency] = useState<CurrencyCode>('SGD');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | undefined>(undefined);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Expense | undefined>(undefined);
 
   async function refresh() {
     try {
@@ -94,6 +97,11 @@ export default function ExpensesPage() {
   }
 
   function openEdit(e: Expense) {
+    if (isPayment(e)) {
+      setEditingPayment(e);
+      setPaymentOpen(true);
+      return;
+    }
     setEditing(e);
     setSheetOpen(true);
   }
@@ -101,6 +109,11 @@ export default function ExpensesPage() {
   function onSheetClose() {
     setSheetOpen(false);
     setEditing(undefined);
+  }
+
+  function onPaymentSheetClose() {
+    setPaymentOpen(false);
+    setEditingPayment(undefined);
   }
 
   if (loading) return <SkeletonExpenses />;
@@ -147,6 +160,16 @@ export default function ExpensesPage() {
         onClose={onSheetClose}
         onSaved={(saved) => setBoot((b) => (b ? { ...b, expenses: applyExpenseChange(b.expenses, saved) } : b))}
         expense={editing}
+        members={boot.members}
+        settings={boot.settings}
+        currency={currency}
+      />
+
+      <PaymentSheet
+        open={paymentOpen}
+        onClose={onPaymentSheetClose}
+        onSaved={(saved) => setBoot((b) => (b ? { ...b, expenses: applyExpenseChange(b.expenses, saved) } : b))}
+        payment={editingPayment}
         members={boot.members}
         settings={boot.settings}
         currency={currency}
@@ -218,7 +241,8 @@ function ExpenseRow({
     `amount_${currency.toLowerCase()}`
   ] ?? 0;
   const showOriginal = expense.currency !== currency;
-  const splitNote = describeSplit(expense, memberMap);
+  const payment = isPayment(expense);
+  const recipient = payment ? paymentRecipient(expense, memberMap) : null;
 
   return (
     <button
@@ -234,20 +258,39 @@ function ExpenseRow({
         />
       )}
       <div className="flex-1 min-w-0 space-y-0.5">
-        <span
-          className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full"
-          style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
-        >
-          <i className={cn(categoryIcon(expense.category), 'text-[12px] leading-none')} />
-          {expense.category}
-        </span>
+        {payment ? (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: 'var(--color-mint)', color: 'var(--color-cocoa)' }}
+          >
+            <i className="fi-sr-handshake text-[12px] leading-none" />
+            Settle up
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
+          >
+            <i className={cn(categoryIcon(expense.category), 'text-[12px] leading-none')} />
+            {expense.category}
+          </span>
+        )}
         <p className="font-semibold truncate">
-          {expense.description || 'Untitled'}
+          {payment
+            ? `${payer?.name ?? '—'} → ${recipient?.name ?? '—'}`
+            : expense.description || 'Untitled'}
         </p>
-        <p className="text-xs opacity-60 truncate">{splitNote}</p>
+        <p className="text-xs opacity-60 truncate">
+          {payment ? 'Recorded payment' : describeSplit(expense, memberMap)}
+        </p>
       </div>
       <div className="text-right shrink-0">
-        <p className="font-bold leading-tight">{formatMoney(displayAmount, currency)}</p>
+        <p
+          className="font-bold leading-tight"
+          style={payment ? { color: 'var(--color-mint-deep)' } : undefined}
+        >
+          {formatMoney(displayAmount, currency)}
+        </p>
         {showOriginal && (
           <p className="text-[11px] opacity-60 leading-tight mt-0.5">
             {formatMoney(expense.amount, expense.currency)}
@@ -256,6 +299,19 @@ function ExpenseRow({
       </div>
     </button>
   );
+}
+
+function paymentRecipient(expense: Expense, memberMap: Map<string, Member>): Member | null {
+  try {
+    const raw = expense.split_data ? JSON.parse(expense.split_data) : {};
+    if (raw && typeof raw === 'object') {
+      const ids = Object.keys(raw).filter((id) => Number(raw[id]) !== 0);
+      if (ids.length) return memberMap.get(ids[0]) ?? null;
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
 }
 
 function describeSplit(expense: Expense, memberMap: Map<string, Member>): string {

@@ -8,9 +8,11 @@ import type { CurrencyCode } from '@/lib/currency';
 import { CURRENCY_CODES, CURRENCIES } from '@/lib/currency';
 import { Mascot } from '@/components/Mascot';
 import { ExpenseSheet } from '@/components/ExpenseSheet';
+import { PaymentSheet } from '@/components/PaymentSheet';
 import { formatMoney, shortMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { computeSettlement } from '@/lib/settlement';
+import { isPayment } from '@/lib/categories';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -20,6 +22,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
 
   const settlement: Settlement | null = useMemo(
     () => (boot ? computeSettlement(boot.expenses, boot.members, currency) : null),
@@ -73,10 +76,20 @@ export default function Dashboard() {
 
   const myBalance = settlement.balances.find((b) => b.id === me.id);
   const myNet = myBalance?.net ?? 0;
-  const totalSpent = boot.expenses.reduce(
+  const tripExpenses = boot.expenses.filter((e) => !isPayment(e));
+  const totalSpent = tripExpenses.reduce(
     (acc, e) => acc + (Number(e[`amount_${currency.toLowerCase()}` as 'amount_sgd']) || 0),
     0,
   );
+
+  // Pre-fill the settle-up sheet from the suggested transfer that involves the
+  // current user (debtor first, then creditor), falling back to the largest
+  // outstanding transfer.
+  const suggested =
+    settlement.transfers.find((t) => t.from === me.id) ??
+    settlement.transfers.find((t) => t.to === me.id) ??
+    settlement.transfers[0] ??
+    null;
 
   return (
     <div className="space-y-5">
@@ -88,14 +101,18 @@ export default function Dashboard() {
 
       <div className="flex gap-3">
         <div className="flex-1">
-          <TripSummary total={totalSpent} currency={currency} expenseCount={boot.expenses.length} />
+          <TripSummary total={totalSpent} currency={currency} expenseCount={tripExpenses.length} />
         </div>
         <AddCard onClick={() => setSheetOpen(true)} />
       </div>
 
       <MemberStrip members={boot.members} settlement={settlement} currency={currency} myId={me.id} />
 
-      <SettlementList settlement={settlement} myId={me.id} />
+      <SettlementList
+        settlement={settlement}
+        myId={me.id}
+        onSettleUp={() => setPaymentOpen(true)}
+      />
 
       <ExpenseSheet
         open={sheetOpen}
@@ -104,6 +121,18 @@ export default function Dashboard() {
         members={boot.members}
         settings={boot.settings}
         currency={currency}
+      />
+
+      <PaymentSheet
+        open={paymentOpen}
+        onClose={() => setPaymentOpen(false)}
+        onSaved={(saved) => setBoot((b) => (b ? { ...b, expenses: applyExpenseChange(b.expenses, saved) } : b))}
+        members={boot.members}
+        settings={boot.settings}
+        currency={currency}
+        defaultFrom={suggested?.from ?? me.id}
+        defaultTo={suggested?.to}
+        defaultAmount={suggested?.amount}
       />
     </div>
   );
@@ -233,9 +262,15 @@ function MemberStrip({ members, settlement, currency, myId }: { members: Member[
   );
 }
 
-function SettlementList({ settlement, myId }: { settlement: Settlement; myId: string }) {
-  if (!settlement.transfers.length) return null;
-
+function SettlementList({
+  settlement,
+  myId,
+  onSettleUp,
+}: {
+  settlement: Settlement;
+  myId: string;
+  onSettleUp: () => void;
+}) {
   const grouped = new Map<string, { mascot: Member['mascot']; name: string; rows: typeof settlement.transfers }>();
   for (const t of settlement.transfers) {
     const g = grouped.get(t.from);
@@ -248,36 +283,54 @@ function SettlementList({ settlement, myId }: { settlement: Settlement; myId: st
 
   return (
     <section>
-      <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Settle up</h2>
-      <ul className="space-y-2">
-        {Array.from(grouped.entries()).map(([fromId, g]) => {
-          const involvesMe = fromId === myId || g.rows.some((r) => r.to === myId);
-          return (
-            <li
-              key={fromId}
-              className="card-plush p-3"
-              style={involvesMe ? { boxShadow: '0 0 0 2px var(--color-peach), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <Mascot name={g.mascot} size="sm" />
-                <p className="text-sm">
-                  <span className="font-semibold">{g.name}</span>
-                  <span className="opacity-60"> pays</span>
-                </p>
-              </div>
-              <ul className="ml-11 space-y-1.5">
-                {g.rows.map((r, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    <Mascot name={r.to_mascot} size="sm" />
-                    <span className="text-sm font-semibold flex-1">{r.to_name}</span>
-                    <span className="font-bold">{formatMoney(r.amount, settlement.currency)}</span>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="flex items-center justify-between mb-2 px-1">
+        <h2 className="text-sm font-semibold opacity-70">Settle up</h2>
+        <button
+          onClick={onSettleUp}
+          className="text-xs font-semibold px-3 py-1.5 rounded-full shadow-sm"
+          style={{ background: 'var(--color-peach-deep)', color: 'var(--color-cocoa)' }}
+        >
+          + Record payment
+        </button>
+      </div>
+      {grouped.size === 0 ? (
+        <p
+          className="card-plush p-3 text-sm text-center opacity-70"
+          style={{ background: 'var(--color-cream-soft)' }}
+        >
+          All settled.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {Array.from(grouped.entries()).map(([fromId, g]) => {
+            const involvesMe = fromId === myId || g.rows.some((r) => r.to === myId);
+            return (
+              <li
+                key={fromId}
+                className="card-plush p-3"
+                style={involvesMe ? { boxShadow: '0 0 0 2px var(--color-peach), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <Mascot name={g.mascot} size="sm" />
+                  <p className="text-sm">
+                    <span className="font-semibold">{g.name}</span>
+                    <span className="opacity-60"> pays</span>
+                  </p>
+                </div>
+                <ul className="ml-11 space-y-1.5">
+                  {g.rows.map((r, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <Mascot name={r.to_mascot} size="sm" />
+                      <span className="text-sm font-semibold flex-1">{r.to_name}</span>
+                      <span className="font-bold">{formatMoney(r.amount, settlement.currency)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

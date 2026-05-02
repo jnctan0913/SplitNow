@@ -130,13 +130,14 @@ export default function ItineraryPage() {
     const result: DayGroup[] = [];
     for (let n = 1; n <= total; n++) {
       const list = (byDay.get(n) ?? []).slice().sort((a, b) => {
+        // Different dates within the same day_num (e.g. flight on May 25 vs
+        // arrival May 26 both bucketed as Day 1) sort chronologically.
+        if (a.date && b.date && a.date !== b.date) return a.date < b.date ? -1 : 1;
         const ta = timeToMinutes(a.time);
         const tb = timeToMinutes(b.time);
-        // Items with parseable times sort by time. Untimed items go to the end.
         if (ta !== null && tb !== null) return ta - tb;
         if (ta !== null) return -1;
         if (tb !== null) return 1;
-        // Both untimed: fall back to creation order via position.
         return (a.position || 0) - (b.position || 0);
       });
       result.push({

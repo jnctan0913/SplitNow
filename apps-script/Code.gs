@@ -17,6 +17,7 @@ const SHEETS = {
   expenses: 'Expenses',
   rates: 'Rates',
   settings: 'Settings',
+  itinerary: 'Itinerary',
 };
 
 const EXPENSE_HEADERS = [
@@ -31,6 +32,15 @@ const EXPENSE_HEADERS = [
 const MEMBER_HEADERS = ['id', 'name', 'mascot', 'color', 'active'];
 const RATES_HEADERS = ['pair', 'rate', 'updated_at'];
 const SETTINGS_HEADERS = ['key', 'value', 'description'];
+
+const ITINERARY_HEADERS = [
+  'id', 'created_at', 'updated_at',
+  'day_num', 'date', 'time',
+  'title', 'notes', 'category',
+  'map_url', 'link', 'cost_note',
+  'position',
+  'last_edited_by', 'deleted_at',
+];
 
 const DEFAULT_MEMBERS = [
   ['m1', 'Careen',   'StellaLou',  '#D8C8E8', true],
@@ -49,10 +59,11 @@ const RATE_PAIRS = ['JPYSGD', 'SGDJPY', 'JPYMYR', 'MYRJPY', 'SGDMYR', 'MYRSGD'];
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ensureSheet_(ss, SHEETS.members,  MEMBER_HEADERS);
-  ensureSheet_(ss, SHEETS.expenses, EXPENSE_HEADERS);
-  ensureSheet_(ss, SHEETS.rates,    RATES_HEADERS);
-  ensureSheet_(ss, SHEETS.settings, SETTINGS_HEADERS);
+  ensureSheet_(ss, SHEETS.members,   MEMBER_HEADERS);
+  ensureSheet_(ss, SHEETS.expenses,  EXPENSE_HEADERS);
+  ensureSheet_(ss, SHEETS.rates,     RATES_HEADERS);
+  ensureSheet_(ss, SHEETS.settings,  SETTINGS_HEADERS);
+  ensureSheet_(ss, SHEETS.itinerary, ITINERARY_HEADERS);
 
   seedMembersIfEmpty_(ss);
   seedRatesIfEmpty_(ss);
@@ -108,6 +119,10 @@ function seedSettingsIfEmpty_(ss) {
 // HTTP HANDLERS
 // =====================================================================
 
+const GET_ACTIONS_REQUIRING_PASSCODE = {
+  bootstrap: true, expenses: true, rates: true, settlement: true, itinerary: true,
+};
+
 function doGet(e) {
   return handle_(e, (params) => {
     const action = params.action;
@@ -115,6 +130,7 @@ function doGet(e) {
     if (action === 'expenses')   return listExpenses_();
     if (action === 'rates')      return getRates_();
     if (action === 'settlement') return computeSettlement_(params.currency || 'SGD');
+    if (action === 'itinerary')  return listItinerary_();
     throw new Error('Unknown action: ' + action);
   });
 }
@@ -124,10 +140,13 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents || '{}');
     requirePasscode_(body.passcode);
     const action = body.action;
-    if (action === 'addExpense')    return addExpense_(body.expense, body.actor);
-    if (action === 'updateExpense') return updateExpense_(body.id, body.fields, body.actor);
-    if (action === 'deleteExpense') return deleteExpense_(body.id, body.actor);
-    if (action === 'verify')        return { ok: true };
+    if (action === 'addExpense')      return addExpense_(body.expense, body.actor);
+    if (action === 'updateExpense')   return updateExpense_(body.id, body.fields, body.actor);
+    if (action === 'deleteExpense')   return deleteExpense_(body.id, body.actor);
+    if (action === 'addItinerary')    return addItinerary_(body.item, body.actor);
+    if (action === 'updateItinerary') return updateItinerary_(body.id, body.fields, body.actor);
+    if (action === 'deleteItinerary') return deleteItinerary_(body.id, body.actor);
+    if (action === 'verify')          return { ok: true };
     throw new Error('Unknown action: ' + action);
   });
 }
@@ -135,7 +154,7 @@ function doPost(e) {
 function handle_(e, fn) {
   try {
     const params = (e && e.parameter) || {};
-    if (params.action === 'rates' || params.action === 'bootstrap' || params.action === 'expenses' || params.action === 'settlement') {
+    if (GET_ACTIONS_REQUIRING_PASSCODE[params.action]) {
       requirePasscode_(params.passcode);
     }
     const out = fn(params);
@@ -296,6 +315,86 @@ function validateExpense_(e) {
   if (!e.category) throw new Error('category required');
   if (!e.paid_by) throw new Error('paid_by required');
   if (!['equal', 'amount', 'percent'].includes(e.split_mode)) throw new Error('split_mode must be equal/amount/percent');
+}
+
+// =====================================================================
+// WRITE - ITINERARY
+// =====================================================================
+
+function listItinerary_() {
+  return readSheet_(SHEETS.itinerary).filter(r => !r.deleted_at);
+}
+
+function addItinerary_(item, actor) {
+  validateItinerary_(item);
+  const id = 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const now = new Date().toISOString();
+  const row = ITINERARY_HEADERS.map(h => {
+    switch (h) {
+      case 'id':              return id;
+      case 'created_at':      return now;
+      case 'updated_at':      return now;
+      case 'day_num':         return Number(item.day_num) || 1;
+      case 'date':            return item.date || '';
+      case 'time':            return item.time || '';
+      case 'title':           return item.title;
+      case 'notes':           return item.notes || '';
+      case 'category':        return item.category || 'Other';
+      case 'map_url':         return item.map_url || '';
+      case 'link':            return item.link || '';
+      case 'cost_note':       return item.cost_note || '';
+      case 'position':        return Number(item.position) || 0;
+      case 'last_edited_by':  return actor || '';
+      case 'deleted_at':      return '';
+      default:                return '';
+    }
+  });
+  sheet_(SHEETS.itinerary).appendRow(row);
+  return findItineraryById_(id);
+}
+
+function updateItinerary_(id, fields, actor) {
+  const sh = sheet_(SHEETS.itinerary);
+  const rowIdx = findRowIndexById_(sh, id);
+  if (rowIdx === -1) throw new Error('Itinerary item not found: ' + id);
+
+  const headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const current = sh.getRange(rowIdx, 1, 1, headerRow.length).getValues()[0];
+  const set = (h, v) => { current[headerRow.indexOf(h)] = v; };
+
+  Object.keys(fields).forEach(k => {
+    if (!ITINERARY_HEADERS.includes(k)) return;
+    set(k, fields[k]);
+  });
+
+  set('updated_at', new Date().toISOString());
+  if (actor) set('last_edited_by', actor);
+
+  sh.getRange(rowIdx, 1, 1, headerRow.length).setValues([current]);
+  return findItineraryById_(id);
+}
+
+function deleteItinerary_(id, actor) {
+  const sh = sheet_(SHEETS.itinerary);
+  const rowIdx = findRowIndexById_(sh, id);
+  if (rowIdx === -1) throw new Error('Itinerary item not found: ' + id);
+  const headerRow = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const colDeleted = headerRow.indexOf('deleted_at') + 1;
+  const colEditor  = headerRow.indexOf('last_edited_by') + 1;
+  const colUpdated = headerRow.indexOf('updated_at') + 1;
+  sh.getRange(rowIdx, colDeleted).setValue(new Date().toISOString());
+  sh.getRange(rowIdx, colUpdated).setValue(new Date().toISOString());
+  if (actor) sh.getRange(rowIdx, colEditor).setValue(actor);
+  return { id, deleted: true };
+}
+
+function validateItinerary_(i) {
+  if (!i) throw new Error('Missing itinerary item');
+  if (!i.title || !String(i.title).trim()) throw new Error('title required');
+}
+
+function findItineraryById_(id) {
+  return listItinerary_().find(i => i.id === id) || null;
 }
 
 // =====================================================================

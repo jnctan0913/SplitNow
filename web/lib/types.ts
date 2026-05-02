@@ -77,3 +77,21 @@ export interface Settlement {
   balances: Balance[];
   transfers: Transfer[];
 }
+
+export interface ItineraryItem {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  day_num: number;
+  date: string;
+  time: string;
+  title: string;
+  notes: string;
+  category: string;
+  map_url: string;
+  link: string;
+  cost_note: string;
+  position: number;
+  last_edited_by: string;
+  deleted_at: string;
+}

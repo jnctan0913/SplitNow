@@ -1,8 +1,22 @@
-import type { Bootstrap, Expense, Settlement, Rates, SplitMode } from './types';
+import type { Bootstrap, Expense, ItineraryItem, Settlement, Rates, SplitMode } from './types';
 
 export function applyExpenseChange(list: Expense[], change: Expense): Expense[] {
   if (change.deleted_at) return list.filter((e) => e.id !== change.id);
   const idx = list.findIndex((e) => e.id === change.id);
+  if (idx >= 0) {
+    const next = list.slice();
+    next[idx] = change;
+    return next;
+  }
+  return [change, ...list];
+}
+
+export function applyItineraryChange(
+  list: ItineraryItem[],
+  change: ItineraryItem,
+): ItineraryItem[] {
+  if (change.deleted_at) return list.filter((i) => i.id !== change.id);
+  const idx = list.findIndex((i) => i.id === change.id);
   if (idx >= 0) {
     const next = list.slice();
     next[idx] = change;
@@ -23,6 +37,7 @@ if (!API_URL) {
 const PASSCODE_KEY = 'travel_log_passcode';
 const ACTOR_KEY = 'travel_log_actor';
 const BOOT_CACHE_KEY = 'travel_log_bootstrap_cache_v1';
+const ITIN_CACHE_KEY = 'travel_log_itinerary_cache_v1';
 
 export const passcode = {
   get: () => (typeof window === 'undefined' ? '' : localStorage.getItem(PASSCODE_KEY) ?? ''),
@@ -89,6 +104,30 @@ export function clearBootCache() {
   window.localStorage.removeItem(BOOT_CACHE_KEY);
 }
 
+export function readItineraryCache(): ItineraryItem[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(ITIN_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { data: ItineraryItem[] };
+    return parsed.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeItineraryCache(data: ItineraryItem[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ITIN_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
+
+export function clearItineraryCache() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(ITIN_CACHE_KEY);
+}
+
 export const api = {
   verify: (code: string) => post<{ ok: true }>('verify', { passcode: code }),
   // Always hits the network. Use bootstrapCached for stale-while-revalidate.
@@ -101,6 +140,11 @@ export const api = {
   updateExpense: (id: string, fields: Partial<NewExpenseInput>) =>
     post<Expense>('updateExpense', { id, fields }),
   deleteExpense: (id: string) => post<{ id: string; deleted: true }>('deleteExpense', { id }),
+  itinerary: () => get<ItineraryItem[]>('itinerary').then((items) => { writeItineraryCache(items); return items; }),
+  addItinerary: (item: NewItineraryInput) => post<ItineraryItem>('addItinerary', { item }),
+  updateItinerary: (id: string, fields: Partial<NewItineraryInput>) =>
+    post<ItineraryItem>('updateItinerary', { id, fields }),
+  deleteItinerary: (id: string) => post<{ id: string; deleted: true }>('deleteItinerary', { id }),
 };
 
 export interface NewExpenseInput {
@@ -113,4 +157,17 @@ export interface NewExpenseInput {
   paid_by: string;
   split_mode: SplitMode;
   split_data: Record<string, number>;
+}
+
+export interface NewItineraryInput {
+  day_num: number;
+  date: string;
+  time?: string;
+  title: string;
+  notes?: string;
+  category: string;
+  map_url?: string;
+  link?: string;
+  cost_note?: string;
+  position?: number;
 }

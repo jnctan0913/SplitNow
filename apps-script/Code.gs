@@ -654,8 +654,13 @@ function addExpense_(expense, actor) {
   const id = 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const now = new Date().toISOString();
   const snaps = computeSnapshots_(expense.amount, expense.currency);
+  const sh = sheet_(SHEETS.expenses);
+  // Use the SHEET's actual column order for the row, not EXPENSE_HEADERS.
+  // When ensureSheet_ migrates new headers it appends them at the end, so
+  // a sheet's columns can be in a different order than the canonical list.
+  const sheetHeaders = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
 
-  const row = EXPENSE_HEADERS.map(h => {
+  function valueFor(h) {
     if (h.indexOf('amount_') === 0) {
       const cur = h.slice('amount_'.length).toUpperCase();
       return snaps[cur] != null ? snaps[cur] : '';
@@ -677,9 +682,9 @@ function addExpense_(expense, actor) {
       case 'deleted_at':      return '';
       default:                return '';
     }
-  });
+  }
 
-  sheet_(SHEETS.expenses).appendRow(row);
+  sh.appendRow(sheetHeaders.map(valueFor));
   return findExpenseById_(id);
 }
 
@@ -780,7 +785,17 @@ function addItinerary_(item, actor) {
   validateItinerary_(item);
   const id = 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const now = new Date().toISOString();
-  const row = ITINERARY_HEADERS.map(h => {
+  const sh = sheet_(SHEETS.itinerary);
+  // Use the SHEET's actual column order, not ITINERARY_HEADERS. ensureSheet_
+  // appends migrated columns at the end, so a sheet that was set up before a
+  // column was added (e.g. time_fixed) will have a different layout from the
+  // canonical list. Writing canonical-ordered values into a non-canonical
+  // sheet shifts data into the wrong columns; among other things, the value
+  // intended for last_edited_by ends up in deleted_at, which then makes the
+  // row invisible because listItinerary_ filters truthy deleted_at.
+  const sheetHeaders = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+
+  function valueFor(h) {
     switch (h) {
       case 'id':              return id;
       case 'created_at':      return now;
@@ -800,8 +815,9 @@ function addItinerary_(item, actor) {
       case 'deleted_at':      return '';
       default:                return '';
     }
-  });
-  sheet_(SHEETS.itinerary).appendRow(row);
+  }
+
+  sh.appendRow(sheetHeaders.map(valueFor));
   return findItineraryById_(id);
 }
 

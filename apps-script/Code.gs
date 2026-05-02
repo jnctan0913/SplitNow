@@ -760,7 +760,11 @@ function listItinerary_() {
       if ((!r.id || String(r.id).trim() === '') && (!r.title || String(r.title).trim() === '')) return false;
       return true;
     })
-    .map(function (r) { r.date = normalizeDateValue_(r.date, tz); return r; });
+    .map(function (r) {
+      r.date = normalizeDateValue_(r.date, tz);
+      r.time = normalizeTimeValue_(r.time, tz);
+      return r;
+    });
 }
 
 // Coerces a date value (Date object or string in any common format) into
@@ -780,6 +784,42 @@ function normalizeDateValue_(value, tz) {
   if (!isNaN(parsed.getTime())) return Utilities.formatDate(parsed, tz, 'yyyy-MM-dd');
   return s; // unrecognized; pass through so user can fix
 }
+
+// Coerces a time value into a clean string the frontend can parse identically
+// across trips. Sheets serializes time-only cells as Date objects (which JSON
+// stringifies to "1899-12-30T..." UTC strings); this helper renders them as
+// "HH:MM" in the spreadsheet's timezone so the API response shape matches the
+// plain-text Tokyo path.
+function normalizeTimeValue_(value, tz) {
+  if (value === '' || value == null) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (isNaN(value.getTime())) return '';
+    return Utilities.formatDate(value, tz, 'HH:mm');
+  }
+  const s = String(value).trim();
+  if (!s) return '';
+  // Defensive: if a 1899-ISO string leaks through (shouldn't normally, since
+  // we intercept Date objects above), parse with Singapore LMT (+6h55m) which
+  // is what Sheets applies to pre-1900 cells.
+  const m1899 = s.match(/^1899-12-\d{2}T(\d{2}):(\d{2}):/);
+  if (m1899) {
+    const total = parseInt(m1899[1], 10) * 60 + parseInt(m1899[2], 10) + 6 * 60 + 55;
+    let h = Math.floor(total / 60) % 24;
+    let mi = Math.round((total % 60) / 5) * 5;
+    if (mi === 60) { mi = 0; h = (h + 1) % 24; }
+    return _pad2(h) + ':' + _pad2(mi);
+  }
+  // Plain HH:MM or HH:MM:SS: clean to HH:MM.
+  const mPlain = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (mPlain) {
+    const h = parseInt(mPlain[1], 10), mi = parseInt(mPlain[2], 10);
+    if (h >= 0 && h < 24 && mi >= 0 && mi < 60) return _pad2(h) + ':' + _pad2(mi);
+  }
+  // Textual tag (EVENING) or unrecognized: uppercase pass-through.
+  return s.toUpperCase();
+}
+
+function _pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
 function addItinerary_(item, actor) {
   validateItinerary_(item);

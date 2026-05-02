@@ -7,5 +7,6 @@ export const china: TripConfig = {
   currencies: ['CNY', 'SGD', 'MYR'],
   defaultCurrency: 'CNY',
   loginImage: '/china.png',
+  iconBase: '/icons/china',
   apiUrlEnv: 'NEXT_PUBLIC_SHEETS_API_URL_CHINA',
 };

@@ -7,5 +7,6 @@ export const tokyo: TripConfig = {
   currencies: ['JPY', 'SGD', 'MYR'],
   defaultCurrency: 'SGD',
   loginImage: '/tokyo.png',
+  iconBase: '/icons/tokyo',
   apiUrlEnv: 'NEXT_PUBLIC_SHEETS_API_URL',
 };

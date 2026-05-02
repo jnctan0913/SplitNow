@@ -93,6 +93,91 @@ function looksLikeTime(s: string): boolean {
   return /^(?:\d{1,2})(?::\d{2})?(?:AM|PM)$/.test(s);
 }
 
+// Convert any free-form time input the user might type into the canonical form
+// stored in the sheet: "HH:MM" 24-hour, an uppercase tag, or empty. Anything
+// unrecognized passes through untouched (uppercased) so the user can edit it.
+const TAGS = ['EARLY MORNING', 'MORNING', 'NOON', 'AFTERNOON', 'EVENING', 'LATE NIGHT', 'NIGHT'];
+
+export function canonicalizeTime(input: string | null | undefined): string {
+  if (!input) return '';
+  const raw = String(input).trim();
+  if (!raw) return '';
+
+  // ISO 1899 from legacy data: convert via LMT offset, return HH:MM.
+  const iso = raw.match(/^1899-12-\d{2}T(\d{2}):(\d{2}):/);
+  if (iso) {
+    const total = parseInt(iso[1], 10) * 60 + parseInt(iso[2], 10) + 6 * 60 + 55;
+    let h = Math.floor(total / 60) % 24;
+    let m = Math.round((total % 60) / 5) * 5;
+    if (m === 60) { m = 0; h = (h + 1) % 24; }
+    return `${pad2(h)}:${pad2(m)}`;
+  }
+
+  const upper = raw.toUpperCase().trim();
+  for (const tag of TAGS) {
+    if (upper.includes(tag)) return tag;
+  }
+
+  // Range like "230PM - 530PM" — keep the start time canonical.
+  const first = raw.split(/\s*(?:-|—|–|to)\s*/i)[0].trim();
+
+  // 24h with colon: "9:30", "21:00", "09:30:00"
+  let m = first.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const mi = parseInt(m[2], 10);
+    if (h >= 0 && h < 24 && mi >= 0 && mi < 60) return `${pad2(h)}:${pad2(mi)}`;
+  }
+
+  // 12h with period: "9.30am", "9.30 PM"
+  m = first.match(/^(\d{1,2})\.(\d{2})\s*(AM|PM)$/i);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const mi = parseInt(m[2], 10);
+    const ap = m[3].toUpperCase();
+    if (h === 12 && ap === 'AM') h = 0;
+    else if (ap === 'PM' && h !== 12) h += 12;
+    if (h >= 0 && h < 24 && mi < 60) return `${pad2(h)}:${pad2(mi)}`;
+  }
+
+  // 12h with optional colon: "7AM", "10:30PM", "130PM", "1050PM", "9 30 AM"
+  m = first.replace(/\s+/g, '').match(/^(\d{1,4}):?(\d{2})?(AM|PM)$/i);
+  if (m) {
+    let h: number;
+    let mi: number;
+    if (m[2] !== undefined) {
+      h = parseInt(m[1], 10);
+      mi = parseInt(m[2], 10);
+    } else {
+      const num = m[1];
+      if (num.length <= 2) { h = parseInt(num, 10); mi = 0; }
+      else if (num.length === 3) { h = parseInt(num[0], 10); mi = parseInt(num.slice(1), 10); }
+      else { h = parseInt(num.slice(0, 2), 10); mi = parseInt(num.slice(2), 10); }
+    }
+    const ap = m[3].toUpperCase();
+    if (h >= 1 && h <= 12 && mi >= 0 && mi < 60) {
+      if (ap === 'AM' && h === 12) h = 0;
+      if (ap === 'PM' && h !== 12) h += 12;
+      return `${pad2(h)}:${pad2(mi)}`;
+    }
+  }
+
+  // 4-digit 24h: "0930", "2100"
+  m = first.match(/^(\d{2})(\d{2})$/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const mi = parseInt(m[2], 10);
+    if (h >= 0 && h < 24 && mi >= 0 && mi < 60) return `${pad2(h)}:${pad2(mi)}`;
+  }
+
+  // Unrecognized: pass through uppercased so the user can fix manually.
+  return upper;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 // Convert a free-form time string into minutes-since-midnight for sorting.
 // Returns null if nothing parseable can be extracted, in which case the caller
 // should treat the item as having no time and use a fallback ordering.

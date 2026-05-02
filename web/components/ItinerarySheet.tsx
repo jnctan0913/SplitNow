@@ -5,6 +5,7 @@ import { X, Trash2 } from 'lucide-react';
 import { api, type NewItineraryInput } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { categoryIcon } from '@/lib/categories';
+import { canonicalizeTime } from '@/lib/time';
 import type { ItineraryItem, Settings } from '@/lib/types';
 
 interface Props {
@@ -124,10 +125,11 @@ export function ItinerarySheet({
       return;
     }
     const date = dateFromDayNum(settings.trip_start, dayNum);
+    const canonical = canonicalizeTime(time);
     const payload: NewItineraryInput = {
       day_num: dayNum,
       date,
-      time: time.trim() || undefined,
+      time: canonical || undefined,
       time_fixed: timeFixed,
       title: title.trim(),
       notes: notes.trim() || undefined,

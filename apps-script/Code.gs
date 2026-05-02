@@ -79,15 +79,14 @@ const ITINERARY_HEADERS = [
 const DEFAULT_CATEGORIES = ['Accommodation', 'Transport', 'Entertainment', 'Food', 'Shopping', 'Other'];
 
 const DEFAULT_ITINERARY_HELP = [
-  'You can bulk-add itinerary items by editing the Itinerary tab directly in this spreadsheet.',
+  'You can bulk-add itinerary items by editing the Itinerary tab in the source spreadsheet.',
   '',
   'Required columns: day_num, date, title, category.',
-  'Optional: time, notes, map_url, link, cost_note, position.',
+  'Optional: time, notes, map_url, link, cost_note.',
   '',
-  'For tap-to-edit and tap-to-delete to work, every row needs a unique value in column A (id). Easiest: paste this into A2, copy down, then paste-as-values to freeze it:',
-  '=CONCATENATE("i_", TEXT(NOW(),"yyyymmddhhmmss"), "_", ROW())',
+  'When done, open the Travel Log menu (top of the spreadsheet, after Help) and click "Fix itinerary rows". It auto-fills id, created_at, updated_at, time_fixed, and position for any new rows. Existing values are never overwritten.',
   '',
-  'Set time_fixed to TRUE if the time is exact, leave blank for "approximate". Leave created_at, updated_at, last_edited_by, deleted_at empty.',
+  'Refresh the app to see the changes. Tap-to-edit and tap-to-delete only work after the row has an id, which the menu action takes care of.',
 ].join('\n');
 
 // All from->to pairs across the trip's currencies. e.g. for [CNY,SGD,MYR] this
@@ -107,6 +106,98 @@ const RATE_PAIRS = (function () {
 // today; extend this map if a future trip uses another zero-decimal currency.
 const DECIMALS_BY_CURRENCY = { JPY: 0, SGD: 2, MYR: 2, CNY: 2, USD: 2, EUR: 2 };
 function decimalsFor_(c) { return DECIMALS_BY_CURRENCY[c] != null ? DECIMALS_BY_CURRENCY[c] : 2; }
+
+// =====================================================================
+// SPREADSHEET MENU
+// =====================================================================
+
+// Auto-runs when the spreadsheet is opened. Adds a "Travel Log" menu
+// next to Help with one-click maintenance actions.
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Travel Log')
+    .addItem('Fix itinerary rows (assign id + timestamps)', 'fixItineraryRows')
+    .addItem('Reseed exchange rate pairs (after currency change)', 'reseedRates')
+    .addSeparator()
+    .addItem('Re-run setup() (idempotent)', 'setup')
+    .addToUi();
+}
+
+// Scans the Itinerary sheet and fills missing id, created_at, updated_at,
+// time_fixed, and position cells. Never overwrites existing values. Run
+// after a bulk paste to make the rows fully editable from the app.
+function fixItineraryRows() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = sheet_(SHEETS.itinerary);
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) { ui.alert('Itinerary tab has no data rows.'); return; }
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const col = function (h) { return headers.indexOf(h); };
+  const required = ['id', 'created_at', 'updated_at', 'time', 'time_fixed', 'position', 'day_num'];
+  for (let r = 0; r < required.length; r++) {
+    if (col(required[r]) === -1) {
+      ui.alert('Itinerary sheet is missing column "' + required[r] + '". Run setup() first.');
+      return;
+    }
+  }
+
+  const data = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const idC = col('id'), cAtC = col('created_at'), uAtC = col('updated_at');
+  const tC = col('time'), tFC = col('time_fixed'), posC = col('position'), dayC = col('day_num');
+  const now = new Date().toISOString();
+  const posByDay = {};
+  let fixed = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    let touched = false;
+    if (row[idC] === '' || row[idC] == null) {
+      row[idC] = 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + (i + 2);
+      touched = true;
+    }
+    if (row[cAtC] === '' || row[cAtC] == null) { row[cAtC] = now; touched = true; }
+    if (row[uAtC] === '' || row[uAtC] == null) { row[uAtC] = now; touched = true; }
+    if (row[tFC] === '' || row[tFC] == null) {
+      // If a time is given, treat it as fixed; otherwise approximate.
+      row[tFC] = row[tC] ? true : false;
+      touched = true;
+    }
+    if (row[posC] === '' || row[posC] == null) {
+      const day = Number(row[dayC]) || 1;
+      posByDay[day] = (posByDay[day] || 0) + 1;
+      row[posC] = posByDay[day];
+      touched = true;
+    }
+    if (touched) fixed++;
+  }
+
+  sh.getRange(2, 1, data.length, headers.length).setValues(data);
+  ui.alert('Fixed ' + fixed + ' itinerary row' + (fixed === 1 ? '' : 's') + '.');
+}
+
+// Wipes the Rates sheet body and reseeds from RATE_PAIRS (derived from
+// TRIP_CURRENCIES). Run this after editing TRIP_CURRENCIES at the top of
+// Code.gs so the GoogleFinance formulas update to the new currency triple.
+function reseedRates() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    'Reseed exchange rates?',
+    'This deletes all rows in the Rates tab and reseeds the ' + RATE_PAIRS.length +
+      ' pairs for ' + TRIP_CURRENCIES.join('/') +
+      '. Run this only after intentionally changing TRIP_CURRENCIES.',
+    ui.ButtonSet.YES_NO,
+  );
+  if (resp !== ui.Button.YES) return;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(SHEETS.rates);
+  if (!sh) throw new Error('Rates sheet missing. Run setup() first.');
+  const last = sh.getLastRow();
+  if (last > 1) sh.deleteRows(2, last - 1);
+  seedRatesIfEmpty_(ss);
+  ui.alert('Reseeded ' + RATE_PAIRS.length + ' pairs: ' + RATE_PAIRS.join(', '));
+}
 
 // =====================================================================
 // SETUP

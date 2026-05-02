@@ -68,6 +68,7 @@ function setup() {
   seedMembersIfEmpty_(ss);
   seedRatesIfEmpty_(ss);
   seedSettingsIfEmpty_(ss);
+  forceTextColumns_(ss);
 
   SpreadsheetApp.getUi().alert(
     'Setup complete.\n\n' +
@@ -75,6 +76,21 @@ function setup() {
     '2. Deploy -> New deployment -> Web app (Execute: Me, Access: Anyone).\n' +
     '3. Copy the /exec URL into the Next.js app.'
   );
+}
+
+function forceTextColumns_(ss) {
+  // Stop Sheets from auto-converting human-readable time/date strings into
+  // Date cells. Without this, "9:30AM" gets re-serialized as a 1899 ISO
+  // datetime that drifts under the modern timezone offset.
+  const sh = ss.getSheetByName(SHEETS.itinerary);
+  if (!sh) return;
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const cols = ['date', 'time'];
+  cols.forEach((h) => {
+    const idx = headers.indexOf(h);
+    if (idx === -1) return;
+    sh.getRange(1, idx + 1, sh.getMaxRows(), 1).setNumberFormat('@');
+  });
 }
 
 function ensureSheet_(ss, name, headers) {

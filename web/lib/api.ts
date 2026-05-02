@@ -37,7 +37,7 @@ if (!API_URL) {
 const PASSCODE_KEY = 'travel_log_passcode';
 const ACTOR_KEY = 'travel_log_actor';
 const BOOT_CACHE_KEY = 'travel_log_bootstrap_cache_v1';
-const ITIN_CACHE_KEY = 'travel_log_itinerary_cache_v1';
+const ITIN_CACHE_KEY = 'travel_log_itinerary_cache_v2';
 
 export const passcode = {
   get: () => (typeof window === 'undefined' ? '' : localStorage.getItem(PASSCODE_KEY) ?? ''),

@@ -3,7 +3,7 @@
 // the generic apps icon.
 
 export const CATEGORY_ICON: Record<string, string> = {
-  Accommodation: 'fi-sr-hotel',
+  Accommodation: 'fi-sr-home',
   Transport:     'fi-sr-train-side',
   Entertainment: 'fi-sr-music-note',
   Food:          'fi-sr-noodles',

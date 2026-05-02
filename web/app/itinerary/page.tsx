@@ -13,6 +13,7 @@ import {
 import type { Bootstrap, ItineraryItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { categoryIcon } from '@/lib/categories';
+import { normalizeTime } from '@/lib/time';
 import { ItinerarySheet } from '@/components/ItinerarySheet';
 
 type DayGroup = { dayNum: number; date: string; items: ItineraryItem[] };
@@ -331,7 +332,7 @@ function ItineraryRow({
           className="self-start text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full"
           style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
         >
-          {item.time}
+          {normalizeTime(item.time)}
         </span>
       )}
       <div className="flex items-start gap-2">

@@ -314,9 +314,6 @@ function ItineraryRow({
   const hasLink = !!item.link;
   const hasCost = !!item.cost_note;
   const hasActions = hasMap || hasLink || hasCost;
-  const directionsHref = hasMap
-    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.map_url)}`
-    : '';
 
   function stop(e: React.MouseEvent) {
     e.stopPropagation();
@@ -360,19 +357,6 @@ function ItineraryRow({
             >
               <i className="fi-sr-map text-[12px] leading-none" />
               Map
-            </a>
-          )}
-          {hasMap && (
-            <a
-              href={directionsHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={stop}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full"
-              style={{ background: 'var(--color-sky)', color: 'var(--color-cocoa)' }}
-            >
-              <i className="fi-sr-route text-[12px] leading-none" />
-              Directions
             </a>
           )}
           {hasLink && (

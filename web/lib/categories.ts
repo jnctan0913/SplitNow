@@ -5,7 +5,7 @@
 export const CATEGORY_ICON: Record<string, string> = {
   Accommodation: 'fi-sr-hotel',
   Transport:     'fi-sr-train-side',
-  Entertainment: 'fi-sr-ticket',
+  Entertainment: 'fi-sr-music-note',
   Food:          'fi-sr-noodles',
   Shopping:      'fi-sr-shopping-bag',
   Other:         'fi-sr-apps',

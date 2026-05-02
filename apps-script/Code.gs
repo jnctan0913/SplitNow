@@ -85,7 +85,8 @@ const DEFAULT_ITINERARY_HELP = [
   'Optional: time, notes, map_url, link, cost_note.',
   '',
   'Helpful menu items (top of the spreadsheet, "Travel Log" menu after Help):',
-  ' • Fix itinerary rows — fills id, created_at, updated_at, time_fixed, position for new rows. Never overwrites existing values.',
+  ' • Fix itinerary rows — fills id, created_at, updated_at, time_fixed, position, and day_num (derived from date) for new rows. Never overwrites existing values.',
+  ' • Compact itinerary — deletes phantom blank rows so new entries from the app land next to your existing ones instead of at row 1000.',
   ' • Validate itinerary rows — scans for typos: invalid category, day_num out of range, missing title/date, unknown member id, duplicate ids.',
   ' • Apply itinerary validation rules — re-attaches dropdowns and warning indicators in case they get cleared.',
   '',
@@ -122,6 +123,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Travel Log')
     .addItem('Fix itinerary rows (assign id + timestamps)', 'fixItineraryRows')
+    .addItem('Compact itinerary (delete blank rows)', 'compactItineraryRows')
     .addItem('Validate itinerary rows', 'validateItineraryRows')
     .addItem('Apply itinerary validation rules', 'applyItineraryValidation')
     .addSeparator()
@@ -152,13 +154,30 @@ function fixItineraryRows() {
 
   const data = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
   const idC = col('id'), cAtC = col('created_at'), uAtC = col('updated_at');
-  const tC = col('time'), tFC = col('time_fixed'), posC = col('position'), dayC = col('day_num');
+  const tC = col('time'), tFC = col('time_fixed'), posC = col('position');
+  const dayC = col('day_num'), dateC = col('date'), titleC = col('title');
+  const tripStart = getSetting_('trip_start') || TRIP_INFO.start;
+  const startMs = tripStart ? new Date(tripStart).getTime() : NaN;
   const now = new Date().toISOString();
   const posByDay = {};
   let fixed = 0;
 
+  // A row is "real" if it has any meaningful field. Rows that are entirely
+  // blank (just spread by Sheets' default 1000-row sheet) are skipped so we
+  // don't generate ids for them and pollute the data range.
+  function isMeaningful_(row) {
+    return (
+      String(row[titleC] || '').trim() !== '' ||
+      String(row[dateC]  || '').trim() !== '' ||
+      String(row[idC]    || '').trim() !== '' ||
+      String(row[dayC]   || '').trim() !== ''
+    );
+  }
+
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
+    if (!isMeaningful_(row)) continue;
+
     let touched = false;
     if (row[idC] === '' || row[idC] == null) {
       row[idC] = 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '_' + (i + 2);
@@ -167,8 +186,20 @@ function fixItineraryRows() {
     if (row[cAtC] === '' || row[cAtC] == null) { row[cAtC] = now; touched = true; }
     if (row[uAtC] === '' || row[uAtC] == null) { row[uAtC] = now; touched = true; }
     if (row[tFC] === '' || row[tFC] == null) {
-      // If a time is given, treat it as fixed; otherwise approximate.
       row[tFC] = row[tC] ? true : false;
+      touched = true;
+    }
+    // Derive day_num from date when missing (and trip_start is known).
+    // Fall back to 1 only if date is also missing.
+    if (row[dayC] === '' || row[dayC] == null) {
+      let dn = 1;
+      if (!isNaN(startMs) && row[dateC]) {
+        const d2 = new Date(row[dateC]);
+        if (!isNaN(d2.getTime())) {
+          dn = Math.max(1, Math.floor((d2.getTime() - startMs) / 86400000) + 1);
+        }
+      }
+      row[dayC] = dn;
       touched = true;
     }
     if (row[posC] === '' || row[posC] == null) {
@@ -182,6 +213,42 @@ function fixItineraryRows() {
 
   sh.getRange(2, 1, data.length, headers.length).setValues(data);
   ui.alert('Fixed ' + fixed + ' itinerary row' + (fixed === 1 ? '' : 's') + '.');
+}
+
+// Deletes phantom blank rows in the Itinerary sheet (rows where every
+// meaningful field is empty but Sheets still treats them as data because
+// of formatting or prior empty-string writes). Real rows are kept; their
+// values stay where they are. Idempotent.
+function compactItineraryRows() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = sheet_(SHEETS.itinerary);
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) { ui.alert('Itinerary tab has no data rows.'); return; }
+
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const data = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const col = function (h) { return headers.indexOf(h); };
+  const titleC = col('title'), dateC = col('date'), idC = col('id'), dayC = col('day_num');
+
+  function isMeaningful(row) {
+    return (
+      String(row[titleC] || '').trim() !== '' ||
+      String(row[dateC]  || '').trim() !== '' ||
+      String(row[idC]    || '').trim() !== '' ||
+      String(row[dayC]   || '').trim() !== ''
+    );
+  }
+
+  // Walk bottom-up so row indices stay valid as we delete.
+  let deleted = 0;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (!isMeaningful(data[i])) {
+      sh.deleteRow(i + 2);
+      deleted++;
+    }
+  }
+
+  ui.alert('Compacted itinerary: deleted ' + deleted + ' empty row' + (deleted === 1 ? '' : 's') + '.');
 }
 
 // Menu-callable wrapper: applies validation and shows a confirmation.
@@ -551,7 +618,12 @@ function listSettings_() {
 }
 
 function listExpenses_() {
-  return readSheet_(SHEETS.expenses).filter(r => !r.deleted_at);
+  return readSheet_(SHEETS.expenses).filter(function (r) {
+    if (r.deleted_at) return false;
+    // Skip phantom blank rows: a real expense always has an id.
+    if (!r.id || String(r.id).trim() === '') return false;
+    return true;
+  });
 }
 
 function getRates_() {
@@ -671,7 +743,13 @@ function validateExpense_(e) {
 // =====================================================================
 
 function listItinerary_() {
-  return readSheet_(SHEETS.itinerary).filter(r => !r.deleted_at);
+  return readSheet_(SHEETS.itinerary).filter(function (r) {
+    if (r.deleted_at) return false;
+    // Skip phantom blank rows. A real itinerary item has a title at minimum;
+    // missing both id AND title means the row was never populated.
+    if ((!r.id || String(r.id).trim() === '') && (!r.title || String(r.title).trim() === '')) return false;
+    return true;
+  });
 }
 
 function addItinerary_(item, actor) {

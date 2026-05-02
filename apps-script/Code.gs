@@ -27,9 +27,12 @@
 
 const TRIP_CURRENCIES = ['CNY', 'SGD', 'MYR']; // default currency = first
 const DEFAULT_MEMBERS = [
-  ['m1', 'Member 1',  'Duffy',      '#E8C9A8', true],
-  ['m2', 'Member 2',  'Gelatoni',   '#C8E6D0', true],
-  // Add the rest of the China members here (id, name, Mascot, color, active).
+  ['m1', 'Careen',    'StellaLou',  '#D8C8E8', true],
+  ['m2', 'Justina',   'LinaBell',   '#FFCCD5', true],
+  ['m3', 'Irene',     'ShellieMay', '#F8C8C8', true],
+  ['m4', 'Justin',    'OluMel',     '#C8E6D0', true],
+  ['m5', 'Lily',      'CookieAnn',  '#FFE9A8', true],
+  ['m6', 'Catherine', 'Gelatoni',   '#A8DDF0', true],
 ];
 const TRIP_INFO = {
   name:  'China Jun 2026',

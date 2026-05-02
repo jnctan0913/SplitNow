@@ -73,9 +73,16 @@ export default function ItineraryPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<ItineraryItem | undefined>(undefined);
   const [addDayNum, setAddDayNum] = useState<number | undefined>(undefined);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const dayRefs = useRef<Record<number, HTMLElement | null>>({});
   const didJump = useRef(false);
+
+  // Default the day filter to today's day on first load.
+  useEffect(() => {
+    if (!boot || selectedDay !== null) return;
+    setSelectedDay(todayDayNum(boot.settings.trip_start, boot.settings.trip_end));
+  }, [boot, selectedDay]);
 
   useEffect(() => {
     if (!passcodeStore.get() || !actorStore.get()) {
@@ -134,20 +141,6 @@ export default function ItineraryPage() {
     return result;
   }, [boot, items]);
 
-  // Auto-jump to today's day section once data is loaded.
-  useEffect(() => {
-    if (didJump.current) return;
-    if (!boot || !items) return;
-    const target = todayDayNum(boot.settings.trip_start, boot.settings.trip_end);
-    const el = dayRefs.current[target];
-    if (!el) return;
-    didJump.current = true;
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: 'start', behavior: 'auto' });
-      // Offset for the page header.
-      window.scrollBy({ top: -72, behavior: 'auto' });
-    });
-  }, [boot, items]);
 
   function openAdd(dayNum?: number) {
     setEditing(undefined);
@@ -193,19 +186,28 @@ export default function ItineraryPage() {
       {!hasAny ? (
         <EmptyState onAdd={() => openAdd()} />
       ) : (
-        <div className="space-y-5">
-          {groups.map((g) => (
-            <DaySection
-              key={g.dayNum}
-              group={g}
-              onTap={openEdit}
-              onAdd={() => openAdd(g.dayNum)}
-              registerRef={(el) => {
-                dayRefs.current[g.dayNum] = el;
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <DayPicker
+            groups={groups}
+            selected={selectedDay}
+            onSelect={setSelectedDay}
+          />
+          <div className="space-y-5">
+            {groups
+              .filter((g) => selectedDay === null || g.dayNum === selectedDay)
+              .map((g) => (
+                <DaySection
+                  key={g.dayNum}
+                  group={g}
+                  onTap={openEdit}
+                  onAdd={() => openAdd(g.dayNum)}
+                  registerRef={(el) => {
+                    dayRefs.current[g.dayNum] = el;
+                  }}
+                />
+              ))}
+          </div>
+        </>
       )}
 
       <ItinerarySheet
@@ -218,6 +220,50 @@ export default function ItineraryPage() {
       />
     </div>
   );
+}
+
+function DayPicker({
+  groups,
+  selected,
+  onSelect,
+}: {
+  groups: DayGroup[];
+  selected: number | null;
+  onSelect: (n: number) => void;
+}) {
+  return (
+    <nav
+      className="sticky z-30 flex gap-2 overflow-x-auto -mx-4 px-4 py-2"
+      style={{ top: '0px', background: 'var(--color-cream)' }}
+    >
+      {groups.map((g) => {
+        const isOn = selected === g.dayNum;
+        return (
+          <button
+            key={g.dayNum}
+            onClick={() => onSelect(g.dayNum)}
+            className={cn(
+              'shrink-0 px-3 py-2 rounded-full text-sm font-semibold transition-colors flex items-baseline gap-1.5',
+              isOn ? 'shadow-sm' : 'opacity-70',
+            )}
+            style={{
+              background: isOn ? 'var(--color-peach)' : 'white',
+              color: 'var(--color-cocoa)',
+            }}
+          >
+            <span>Day {g.dayNum}</span>
+            <span className="opacity-60 text-[11px]">{fmtDayPickerDate(g.date)}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function fmtDayPickerDate(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
 }
 
 function DaySection({
@@ -280,20 +326,20 @@ function ItineraryRow({
       onClick={() => onTap(item)}
       className="card-plush p-3 w-full text-left flex flex-col gap-2 active:scale-[0.99] transition-transform"
     >
-      <div className="flex items-center gap-2 min-w-0">
-        {item.time && (
-          <span
-            className="shrink-0 text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full"
-            style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
-          >
-            {item.time}
-          </span>
-        )}
+      {item.time && (
+        <span
+          className="self-start text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full"
+          style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
+        >
+          {item.time}
+        </span>
+      )}
+      <div className="flex items-start gap-2">
         <i
-          className={cn(categoryIcon(item.category), 'text-base leading-none shrink-0 opacity-80')}
+          className={cn(categoryIcon(item.category), 'text-base leading-none shrink-0 opacity-80 mt-1')}
           aria-hidden
         />
-        <p className="font-semibold truncate flex-1">{item.title || 'Untitled'}</p>
+        <p className="font-semibold flex-1 break-words">{item.title || 'Untitled'}</p>
       </div>
 
       {item.notes && (

@@ -1,4 +1,5 @@
 import type { Bootstrap, Expense, ItineraryItem, Settlement, Rates, SplitMode } from './types';
+import { trip } from './trips';
 
 export function applyExpenseChange(list: Expense[], change: Expense): Expense[] {
   if (change.deleted_at) return list.filter((e) => e.id !== change.id);
@@ -27,17 +28,26 @@ export function applyItineraryChange(
 
 import type { CurrencyCode } from './currency';
 
-const API_URL = process.env.NEXT_PUBLIC_SHEETS_API_URL!;
+// Each trip declares which env var holds its Apps Script /exec URL. This is
+// read at build time so the static export bundles the right URL per trip.
+const API_URL =
+  (trip.apiUrlEnv === 'NEXT_PUBLIC_SHEETS_API_URL'
+    ? process.env.NEXT_PUBLIC_SHEETS_API_URL
+    : trip.apiUrlEnv === 'NEXT_PUBLIC_SHEETS_API_URL_CHINA'
+      ? process.env.NEXT_PUBLIC_SHEETS_API_URL_CHINA
+      : undefined) ?? '';
 
 if (!API_URL) {
   // Will only fire on the server during build if env is missing.
-  console.warn('NEXT_PUBLIC_SHEETS_API_URL is not set');
+  console.warn(`${trip.apiUrlEnv} is not set for trip "${trip.id}"`);
 }
 
-const PASSCODE_KEY = 'travel_log_passcode';
-const ACTOR_KEY = 'travel_log_actor';
-const BOOT_CACHE_KEY = 'travel_log_bootstrap_cache_v1';
-const ITIN_CACHE_KEY = 'travel_log_itinerary_cache_v2';
+// localStorage keys are namespaced per trip so visiting multiple subpaths
+// (e.g. /SplitNow/ and /SplitNow/china/) doesn't cross-contaminate state.
+const PASSCODE_KEY      = `travel_log_${trip.id}_passcode`;
+const ACTOR_KEY         = `travel_log_${trip.id}_actor`;
+const BOOT_CACHE_KEY    = `travel_log_${trip.id}_bootstrap_cache_v1`;
+const ITIN_CACHE_KEY    = `travel_log_${trip.id}_itinerary_cache_v2`;
 
 export const passcode = {
   get: () => (typeof window === 'undefined' ? '' : localStorage.getItem(PASSCODE_KEY) ?? ''),

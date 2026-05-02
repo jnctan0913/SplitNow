@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { api, actor as actorStore, passcode as passcodeStore, applyExpenseChange } from '@/lib/api';
 import type { Bootstrap, Expense, Member } from '@/lib/types';
-import { CURRENCY_CODES, CURRENCIES, type CurrencyCode } from '@/lib/currency';
+import { CURRENCIES, amountKey, type CurrencyCode } from '@/lib/currency';
+import { trip } from '@/lib/trips';
 import { Mascot } from '@/components/Mascot';
 import { ExpenseSheet } from '@/components/ExpenseSheet';
 import { PaymentSheet } from '@/components/PaymentSheet';
@@ -20,7 +21,7 @@ export default function ExpensesPage() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currency, setCurrency] = useState<CurrencyCode>('SGD');
+  const [currency, setCurrency] = useState<CurrencyCode>(trip.defaultCurrency);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | undefined>(undefined);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -181,7 +182,7 @@ export default function ExpensesPage() {
 function CurrencyToggle({ currency, onChange }: { currency: CurrencyCode; onChange: (c: CurrencyCode) => void }) {
   return (
     <div className="card-plush flex p-1 gap-1">
-      {CURRENCY_CODES.map((c) => (
+      {trip.currencies.map((c) => (
         <button
           key={c}
           onClick={() => onChange(c)}
@@ -237,9 +238,7 @@ function ExpenseRow({
   onTap: (e: Expense) => void;
 }) {
   const payer = memberMap.get(expense.paid_by);
-  const displayAmount = (expense as unknown as Record<string, number>)[
-    `amount_${currency.toLowerCase()}`
-  ] ?? 0;
+  const displayAmount = Number(expense[amountKey(currency)]) || 0;
   const showOriginal = expense.currency !== currency;
   const payment = isPayment(expense);
   const recipient = payment ? paymentRecipient(expense, memberMap) : null;

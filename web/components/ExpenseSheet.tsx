@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Trash2 } from 'lucide-react';
 import { api, type NewExpenseInput } from '@/lib/api';
-import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from '@/lib/currency';
+import { CURRENCIES, type CurrencyCode } from '@/lib/currency';
+import { trip } from '@/lib/trips';
 import { formatMoney } from '@/lib/format';
 import { Mascot } from '@/components/Mascot';
 import { cn } from '@/lib/utils';
@@ -297,7 +298,7 @@ export function ExpenseSheet({
                 className="w-full text-4xl font-bold bg-transparent outline-none"
               />
               <div className="flex p-1 gap-1 rounded-[var(--radius-pillow)]" style={{ background: 'var(--color-cream)' }}>
-                {CURRENCY_CODES.map((c) => (
+                {trip.currencies.map((c) => (
                   <button
                     key={c}
                     onClick={() => setCurr(c)}

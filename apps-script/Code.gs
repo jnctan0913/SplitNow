@@ -1,16 +1,45 @@
 /**
  * SplitNow - Google Apps Script backend.
  *
- * One-time setup:
- *   1. Paste this file into the Apps Script editor of your spreadsheet.
- *   2. Run setup() once (Run -> setup). Authorize when prompted.
- *   3. Open the Settings sheet and set 'passcode' to your chosen code.
- *   4. Deploy -> New deployment -> Web app
+ * One-time setup (per trip):
+ *   1. Edit TRIP_CURRENCIES below for this trip (3-tuple, default first).
+ *   2. Edit DEFAULT_MEMBERS for this trip's travelers.
+ *   3. Edit TRIP_INFO (name, dates) for this trip.
+ *   4. Paste this file into the Apps Script editor of the trip's spreadsheet.
+ *   5. Run setup() once (Run -> setup). Authorize when prompted.
+ *   6. Open the Settings sheet and set 'passcode' to your chosen code.
+ *   7. Deploy -> New deployment -> Web app
  *      Execute as: Me
  *      Who has access: Anyone
- *      Copy the /exec URL into the Next.js app as NEXT_PUBLIC_SHEETS_API_URL.
- *   5. After any code change, Deploy -> Manage deployments -> Edit -> New version.
+ *      Copy the /exec URL into the GHA secret for this trip
+ *      (e.g. SHEETS_API_URL for tokyo, SHEETS_API_URL_CHINA for china).
+ *   8. After any code change, Deploy -> Manage deployments -> Edit -> New version.
+ *
+ * Note: Tokyo's existing deployment runs an older hardcoded version of this
+ * file (JPY/SGD/MYR baked in). Don't redeploy Tokyo unless you intentionally
+ * want to migrate it to this currency-config-driven version. The column
+ * conventions are identical, so a migration would be safe but not required.
  */
+
+// =====================================================================
+// TRIP CONFIG - edit these per trip
+// =====================================================================
+
+const TRIP_CURRENCIES = ['CNY', 'SGD', 'MYR']; // default currency = first
+const DEFAULT_MEMBERS = [
+  ['m1', 'Member 1',  'Duffy',      '#E8C9A8', true],
+  ['m2', 'Member 2',  'Gelatoni',   '#C8E6D0', true],
+  // Add the rest of the China members here (id, name, Mascot, color, active).
+];
+const TRIP_INFO = {
+  name:  'China Jun 2026',
+  start: '2026-06-13',
+  end:   '2026-06-27',
+};
+
+// =====================================================================
+// DERIVED CONSTANTS - do not edit
+// =====================================================================
 
 const SHEETS = {
   members: 'Members',
@@ -20,14 +49,16 @@ const SHEETS = {
   itinerary: 'Itinerary',
 };
 
+const AMOUNT_COLS = TRIP_CURRENCIES.map(function (c) { return 'amount_' + c.toLowerCase(); });
+
 const EXPENSE_HEADERS = [
   'id', 'created_at', 'updated_at', 'date', 'day_num',
   'category', 'description',
   'amount', 'currency',
-  'amount_jpy', 'amount_sgd', 'amount_myr',
+].concat(AMOUNT_COLS).concat([
   'paid_by', 'split_mode', 'split_data',
   'last_edited_by', 'deleted_at',
-];
+]);
 
 const MEMBER_HEADERS = ['id', 'name', 'mascot', 'color', 'active'];
 const RATES_HEADERS = ['pair', 'rate', 'updated_at'];
@@ -42,16 +73,25 @@ const ITINERARY_HEADERS = [
   'last_edited_by', 'deleted_at',
 ];
 
-const DEFAULT_MEMBERS = [
-  ['m1', 'Careen',   'StellaLou',  '#D8C8E8', true],
-  ['m2', 'Evelyn',   'LinaBell',   '#FFCCD5', true],
-  ['m3', 'Qi Hui',   'ShellieMay', '#F8C8C8', true],
-  ['m4', 'Cheok',    'OluMel',     '#C8E6D0', true],
-  ['m5', 'Wan Qian', 'CookieAnn',  '#FFE9A8', true],
-];
-
 const DEFAULT_CATEGORIES = ['Accommodation', 'Transport', 'Entertainment', 'Food', 'Shopping', 'Other'];
-const RATE_PAIRS = ['JPYSGD', 'SGDJPY', 'JPYMYR', 'MYRJPY', 'SGDMYR', 'MYRSGD'];
+
+// All from->to pairs across the trip's currencies. e.g. for [CNY,SGD,MYR] this
+// produces CNYSGD, SGDCNY, CNYMYR, MYRCNY, SGDMYR, MYRSGD.
+const RATE_PAIRS = (function () {
+  const pairs = [];
+  for (let i = 0; i < TRIP_CURRENCIES.length; i++) {
+    for (let j = 0; j < TRIP_CURRENCIES.length; j++) {
+      if (i === j) continue;
+      pairs.push(TRIP_CURRENCIES[i] + TRIP_CURRENCIES[j]);
+    }
+  }
+  return pairs;
+})();
+
+// Decimal digits per currency. JPY is the only zero-decimal one we care about
+// today; extend this map if a future trip uses another zero-decimal currency.
+const DECIMALS_BY_CURRENCY = { JPY: 0, SGD: 2, MYR: 2, CNY: 2, USD: 2, EUR: 2 };
+function decimalsFor_(c) { return DECIMALS_BY_CURRENCY[c] != null ? DECIMALS_BY_CURRENCY[c] : 2; }
 
 // =====================================================================
 // SETUP
@@ -131,10 +171,10 @@ function seedSettingsIfEmpty_(ss) {
   const sh = ss.getSheetByName(SHEETS.settings);
   if (sh.getLastRow() > 1) return;
   const rows = [
-    ['passcode',   'CHANGE_ME',                     'Shared passcode required for all writes - update before sharing'],
-    ['trip_name',  'Tokyo May-Jun 2026',            'Display name'],
-    ['trip_start', '2026-05-26',                    'ISO date'],
-    ['trip_end',   '2026-06-02',                    'ISO date'],
+    ['passcode',   'CHANGE_ME',                       'Shared passcode required for all writes - update before sharing'],
+    ['trip_name',  TRIP_INFO.name,                    'Display name'],
+    ['trip_start', TRIP_INFO.start,                   'ISO date'],
+    ['trip_end',   TRIP_INFO.end,                     'ISO date'],
     ['categories', JSON.stringify(DEFAULT_CATEGORIES), 'JSON array of expense categories'],
   ];
   sh.getRange(2, 1, rows.length, SETTINGS_HEADERS.length).setValues(rows);
@@ -258,6 +298,10 @@ function addExpense_(expense, actor) {
   const snaps = computeSnapshots_(expense.amount, expense.currency);
 
   const row = EXPENSE_HEADERS.map(h => {
+    if (h.indexOf('amount_') === 0) {
+      const cur = h.slice('amount_'.length).toUpperCase();
+      return snaps[cur] != null ? snaps[cur] : '';
+    }
     switch (h) {
       case 'id':              return id;
       case 'created_at':      return now;
@@ -268,9 +312,6 @@ function addExpense_(expense, actor) {
       case 'description':     return expense.description || '';
       case 'amount':          return Number(expense.amount);
       case 'currency':        return expense.currency;
-      case 'amount_jpy':      return snaps.JPY;
-      case 'amount_sgd':      return snaps.SGD;
-      case 'amount_myr':      return snaps.MYR;
       case 'paid_by':         return expense.paid_by;
       case 'split_mode':      return expense.split_mode;
       case 'split_data':      return JSON.stringify(expense.split_data || {});
@@ -306,9 +347,9 @@ function updateExpense_(id, fields, actor) {
 
   if (amountChanged || currencyChanged) {
     const snaps = computeSnapshots_(get('amount'), get('currency'));
-    set('amount_jpy', snaps.JPY);
-    set('amount_sgd', snaps.SGD);
-    set('amount_myr', snaps.MYR);
+    TRIP_CURRENCIES.forEach(function (cur) {
+      set('amount_' + cur.toLowerCase(), snaps[cur] != null ? snaps[cur] : '');
+    });
   }
 
   set('updated_at', new Date().toISOString());
@@ -335,7 +376,7 @@ function deleteExpense_(id, actor) {
 function validateExpense_(e) {
   if (!e) throw new Error('Missing expense');
   if (typeof e.amount !== 'number' && isNaN(Number(e.amount))) throw new Error('amount must be a number');
-  if (!['JPY', 'SGD', 'MYR'].includes(e.currency)) throw new Error('currency must be JPY/SGD/MYR');
+  if (TRIP_CURRENCIES.indexOf(e.currency) === -1) throw new Error('currency must be one of ' + TRIP_CURRENCIES.join('/'));
   if (!e.date) throw new Error('date required');
   if (!e.category) throw new Error('category required');
   if (!e.paid_by) throw new Error('paid_by required');
@@ -430,17 +471,16 @@ function findItineraryById_(id) {
 function computeSnapshots_(amount, currency) {
   const a = Number(amount);
   const rates = getRates_();
-  const r = (pair) => Number(rates[pair]);
-  const out = { JPY: null, SGD: null, MYR: null };
-  out[currency] = a;
-  if (currency === 'JPY') { out.SGD = a * r('JPYSGD'); out.MYR = a * r('JPYMYR'); }
-  if (currency === 'SGD') { out.JPY = a * r('SGDJPY'); out.MYR = a * r('SGDMYR'); }
-  if (currency === 'MYR') { out.JPY = a * r('MYRJPY'); out.SGD = a * r('MYRSGD'); }
-  return {
-    JPY: round_(out.JPY, 0),
-    SGD: round_(out.SGD, 2),
-    MYR: round_(out.MYR, 2),
-  };
+  const out = {};
+  TRIP_CURRENCIES.forEach(function (cur) {
+    if (cur === currency) {
+      out[cur] = round_(a, decimalsFor_(cur));
+    } else {
+      const r = Number(rates[currency + cur]);
+      out[cur] = round_(a * r, decimalsFor_(cur));
+    }
+  });
+  return out;
 }
 
 function round_(n, dp) {
@@ -454,7 +494,7 @@ function round_(n, dp) {
 // =====================================================================
 
 function computeSettlement_(currency) {
-  const cur = ['JPY', 'SGD', 'MYR'].includes(currency) ? currency : 'SGD';
+  const cur = TRIP_CURRENCIES.indexOf(currency) >= 0 ? currency : TRIP_CURRENCIES[0];
   const col = 'amount_' + cur.toLowerCase();
   const expenses = listExpenses_();
   const members = listMembers_();
@@ -472,7 +512,7 @@ function computeSettlement_(currency) {
   });
 
   // Greedy: largest creditor pays largest debtor
-  const dp = cur === 'JPY' ? 0 : 2;
+  const dp = decimalsFor_(cur);
   const balances = members.map(m => ({ id: m.id, name: m.name, mascot: m.mascot, net: round_(totals[m.id] || 0, dp) }));
   const transfers = greedyTransfers_(balances, dp);
   return { currency: cur, balances, transfers };

@@ -6,6 +6,7 @@ import { api, actor as actorStore, passcode as passcodeStore } from '@/lib/api';
 import Image from 'next/image';
 import { Mascot } from '@/components/Mascot';
 import { asset } from '@/lib/asset';
+import { trip } from '@/lib/trips';
 import type { Member } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -53,15 +54,15 @@ export default function Login() {
       <div className="min-h-[80vh] flex flex-col justify-center space-y-8">
         <div className="text-center space-y-2">
           <Image
-            src={asset('/tokyo.png')}
-            alt="Tokyo"
+            src={asset(trip.loginImage)}
+            alt={trip.subtitle}
             width={640}
             height={640}
             priority
             className="mx-auto h-72 w-auto object-contain"
           />
-          <h1 className="text-2xl font-bold">Travel Expenses Log</h1>
-          <p className="opacity-70 text-sm">Tokyo, May to Jun 2026</p>
+          <h1 className="text-2xl font-bold">{trip.name}</h1>
+          <p className="opacity-70 text-sm">{trip.subtitle}</p>
         </div>
 
         <form onSubmit={submitPasscode} className="card-plush p-5 space-y-4">

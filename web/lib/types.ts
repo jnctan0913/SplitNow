@@ -19,14 +19,9 @@ export interface Settings {
   categories: string[];
 }
 
-export interface Rates {
-  JPYSGD: number;
-  SGDJPY: number;
-  JPYMYR: number;
-  MYRJPY: number;
-  SGDMYR: number;
-  MYRSGD: number;
-}
+// Pair keys are `${from}${to}` like 'JPYSGD'. Per-trip rate set is determined
+// by the active trip's currencies, so we don't enumerate them in the type.
+export type Rates = Record<string, number>;
 
 export interface Expense {
   id: string;
@@ -38,14 +33,15 @@ export interface Expense {
   description: string;
   amount: number;
   currency: CurrencyCode;
-  amount_jpy: number;
-  amount_sgd: number;
-  amount_myr: number;
   paid_by: string;
   split_mode: SplitMode;
   split_data: string;
   last_edited_by: string;
   deleted_at: string;
+  // Snapshot amounts in each of the trip's currencies, keyed as
+  // `amount_<lowercase code>` (e.g. amount_jpy, amount_sgd, amount_cny).
+  // Which keys are present is determined by the trip config at runtime.
+  [amountKey: `amount_${string}`]: number | undefined;
 }
 
 export interface Bootstrap {

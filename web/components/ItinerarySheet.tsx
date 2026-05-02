@@ -14,6 +14,9 @@ interface Props {
   item?: ItineraryItem;
   settings: Settings;
   initialDayNum?: number;
+  // Returns the next position (max + 1) for new items in a given day. The page
+  // computes this from current items state and passes a fresh function.
+  getNextPosition?: (dayNum: number) => number;
 }
 
 function pad(n: number): string {
@@ -43,6 +46,7 @@ export function ItinerarySheet({
   open,
   onClose,
   onSaved,
+  getNextPosition,
   item,
   settings,
   initialDayNum,
@@ -128,6 +132,11 @@ export function ItinerarySheet({
       link: link.trim() || undefined,
       cost_note: costNote.trim() || undefined,
     };
+    // For new items only: append to the end of the chosen day. Editing leaves
+    // position untouched so list order doesn't shift on every save.
+    if (!item && getNextPosition) {
+      payload.position = getNextPosition(dayNum);
+    }
     try {
       setSubmitting(true);
       const saved = item

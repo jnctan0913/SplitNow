@@ -13,7 +13,7 @@ import {
 import type { Bootstrap, ItineraryItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { categoryIcon } from '@/lib/categories';
-import { normalizeTime } from '@/lib/time';
+import { normalizeTime, timeToMinutes } from '@/lib/time';
 import { ItinerarySheet } from '@/components/ItinerarySheet';
 
 type DayGroup = { dayNum: number; date: string; items: ItineraryItem[] };
@@ -130,8 +130,14 @@ export default function ItineraryPage() {
     const result: DayGroup[] = [];
     for (let n = 1; n <= total; n++) {
       const list = (byDay.get(n) ?? []).slice().sort((a, b) => {
-        if (a.position !== b.position) return a.position - b.position;
-        return (a.time ?? '').localeCompare(b.time ?? '');
+        const ta = timeToMinutes(a.time);
+        const tb = timeToMinutes(b.time);
+        // Items with parseable times sort by time. Untimed items go to the end.
+        if (ta !== null && tb !== null) return ta - tb;
+        if (ta !== null) return -1;
+        if (tb !== null) return 1;
+        // Both untimed: fall back to creation order via position.
+        return (a.position || 0) - (b.position || 0);
       });
       result.push({
         dayNum: n,
@@ -218,6 +224,11 @@ export default function ItineraryPage() {
         item={editing}
         settings={boot.settings}
         initialDayNum={addDayNum}
+        getNextPosition={(d) => {
+          const list = (items ?? []).filter((i) => !i.deleted_at && i.day_num === d);
+          if (!list.length) return 1;
+          return Math.max(...list.map((i) => i.position || 0)) + 1;
+        }}
       />
     </div>
   );

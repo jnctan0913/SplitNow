@@ -89,3 +89,82 @@ function formatTime(h: number, m: number): string {
 function looksLikeTime(s: string): boolean {
   return /^(?:\d{1,2})(?::\d{2})?(?:AM|PM)$/.test(s);
 }
+
+// Convert a free-form time string into minutes-since-midnight for sorting.
+// Returns null if nothing parseable can be extracted, in which case the caller
+// should treat the item as having no time and use a fallback ordering.
+const TEXTUAL: Array<[RegExp, number]> = [
+  [/EARLY\s*MORNING/, 5 * 60],
+  [/MORNING/,         8 * 60],
+  [/NOON/,            12 * 60],
+  [/AFTERNOON/,       14 * 60],
+  [/EVENING/,         18 * 60],
+  [/LATE\s*NIGHT/,    23 * 60],
+  [/NIGHT/,           21 * 60],
+];
+
+export function timeToMinutes(input: string | null | undefined): number | null {
+  if (!input) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+
+  // Range: take the start time as the sort key.
+  const first = raw.split(/\s*(?:-|—|–|to)\s*/i)[0].trim();
+  if (!first) return null;
+
+  // ISO datetime that Sheets uses for time-only cells.
+  if (/^1899-12-30T/.test(first)) {
+    const d = new Date(first);
+    if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+  }
+
+  const upper = first.toUpperCase();
+
+  // Textual labels first.
+  for (const [pattern, mins] of TEXTUAL) {
+    if (pattern.test(upper)) return mins;
+  }
+
+  // 24h: HH:MM[:SS]
+  let m = upper.match(/^(\d{1,2}):(\d{2})/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const mi = parseInt(m[2], 10);
+    if (h >= 0 && h < 24 && mi >= 0 && mi < 60) return h * 60 + mi;
+  }
+
+  // 12h with period: "9.30AM"
+  m = upper.match(/^(\d{1,2})\.(\d{2})\s*(AM|PM)/);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const mi = parseInt(m[2], 10);
+    if (h >= 1 && h <= 12 && mi < 60) {
+      if (m[3] === 'AM' && h === 12) h = 0;
+      if (m[3] === 'PM' && h !== 12) h += 12;
+      return h * 60 + mi;
+    }
+  }
+
+  // 12h with AM/PM. Accepts "7AM", "10:30PM", "130PM", "1050PM".
+  m = upper.match(/^(\d{1,4}):?(\d{2})?\s*(AM|PM)/);
+  if (m) {
+    let h: number;
+    let mi: number;
+    if (m[2] !== undefined) {
+      h = parseInt(m[1], 10);
+      mi = parseInt(m[2], 10);
+    } else {
+      const num = m[1];
+      if (num.length <= 2) { h = parseInt(num, 10); mi = 0; }
+      else if (num.length === 3) { h = parseInt(num[0], 10); mi = parseInt(num.slice(1), 10); }
+      else { h = parseInt(num.slice(0, 2), 10); mi = parseInt(num.slice(2), 10); }
+    }
+    if (h >= 1 && h <= 12 && mi >= 0 && mi < 60) {
+      if (m[3] === 'AM' && h === 12) h = 0;
+      if (m[3] === 'PM' && h !== 12) h += 12;
+      return h * 60 + mi;
+    }
+  }
+
+  return null;
+}

@@ -171,8 +171,10 @@ def derive_items():
         if hotel:
             ht = clean_text(strip_urls(hotel))
             ht = re.sub(r'^(Airbnb|Hotel)\s*[:\-]?\s*', '', ht, flags=re.I).strip()
-            # Drop hotel-as-notes if it is the same as the title
-            if ht and ht.lower() not in (title.lower(),) and ht.lower() not in [s.lower() for s in sections]:
+            # If notes content starts with the title, drop the duplicated prefix
+            if ht and title and ht.lower().startswith(title.lower()):
+                ht = ht[len(title):].lstrip(' .,-:').strip()
+            if ht and ht.lower() != title.lower() and ht.lower() not in [s.lower() for s in sections]:
                 sections.append(f'Hotel: {ht}')
         notes = '\n'.join(sections)
 

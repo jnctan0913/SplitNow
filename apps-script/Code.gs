@@ -618,12 +618,15 @@ function listSettings_() {
 }
 
 function listExpenses_() {
-  return readSheet_(SHEETS.expenses).filter(function (r) {
-    if (r.deleted_at) return false;
-    // Skip phantom blank rows: a real expense always has an id.
-    if (!r.id || String(r.id).trim() === '') return false;
-    return true;
-  });
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  return readSheet_(SHEETS.expenses)
+    .filter(function (r) {
+      if (r.deleted_at) return false;
+      // Skip phantom blank rows: a real expense always has an id.
+      if (!r.id || String(r.id).trim() === '') return false;
+      return true;
+    })
+    .map(function (r) { r.date = normalizeDateValue_(r.date, tz); return r; });
 }
 
 function getRates_() {
@@ -743,13 +746,34 @@ function validateExpense_(e) {
 // =====================================================================
 
 function listItinerary_() {
-  return readSheet_(SHEETS.itinerary).filter(function (r) {
-    if (r.deleted_at) return false;
-    // Skip phantom blank rows. A real itinerary item has a title at minimum;
-    // missing both id AND title means the row was never populated.
-    if ((!r.id || String(r.id).trim() === '') && (!r.title || String(r.title).trim() === '')) return false;
-    return true;
-  });
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  return readSheet_(SHEETS.itinerary)
+    .filter(function (r) {
+      if (r.deleted_at) return false;
+      // Skip phantom blank rows. A real itinerary item has a title at minimum;
+      // missing both id AND title means the row was never populated.
+      if ((!r.id || String(r.id).trim() === '') && (!r.title || String(r.title).trim() === '')) return false;
+      return true;
+    })
+    .map(function (r) { r.date = normalizeDateValue_(r.date, tz); return r; });
+}
+
+// Coerces a date value (Date object or string in any common format) into
+// a YYYY-MM-DD string using the spreadsheet's timezone. Stops the frontend's
+// date tiebreaker in the sort comparator from doing wrong-order lexical
+// comparisons when one cell is a Sheets Date and another is "M/D/YYYY".
+function normalizeDateValue_(value, tz) {
+  if (value === '' || value == null) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    if (isNaN(value.getTime())) return '';
+    return Utilities.formatDate(value, tz, 'yyyy-MM-dd');
+  }
+  const s = String(value).trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already canonical
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return Utilities.formatDate(parsed, tz, 'yyyy-MM-dd');
+  return s; // unrecognized; pass through so user can fix
 }
 
 function addItinerary_(item, actor) {

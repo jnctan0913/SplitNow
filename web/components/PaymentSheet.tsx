@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Trash2, X } from 'lucide-react';
 import { api, type NewExpenseInput } from '@/lib/api';
-import { CURRENCIES, CURRENCY_CODES, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
+import { CURRENCIES, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
+import { trip } from '@/lib/trips';
 import { Mascot } from '@/components/Mascot';
 import { cn } from '@/lib/utils';
 import { PAYMENT_CATEGORY } from '@/lib/categories';
@@ -289,7 +290,7 @@ export function PaymentSheet({
                 className="w-full text-4xl font-bold bg-transparent outline-none"
               />
               <div className="flex p-1 gap-1 rounded-[var(--radius-pillow)]" style={{ background: 'var(--color-cream)' }}>
-                {CURRENCY_CODES.map((c) => (
+                {trip.currencies.map((c) => (
                   <button
                     key={c}
                     onClick={() => setCurr(c)}

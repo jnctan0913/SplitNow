@@ -20,9 +20,16 @@ jobs:
     defaults:
       run:
         working-directory: web
-    env:
-      NEXT_PUBLIC_BASE_PATH: /SplitNow
-      NEXT_PUBLIC_SHEETS_API_URL: ${{ secrets.SHEETS_API_URL }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - trip: tokyo
+            base_path: /SplitNow
+            out_subdir: ''
+          - trip: china
+            base_path: /SplitNow/china
+            out_subdir: china
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,14 +38,44 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm run build
-      - run: touch out/.nojekyll
+      - name: Build (${{ matrix.trip }})
+        env:
+          NEXT_PUBLIC_TRIP: ${{ matrix.trip }}
+          NEXT_PUBLIC_BASE_PATH: ${{ matrix.base_path }}
+          NEXT_PUBLIC_SHEETS_API_URL: ${{ secrets.SHEETS_API_URL }}
+          NEXT_PUBLIC_SHEETS_API_URL_CHINA: ${{ secrets.SHEETS_API_URL_CHINA }}
+        run: npm run build
+      - name: Stage build for combine
+        run: |
+          mkdir -p ../staging/${{ matrix.out_subdir }}
+          cp -R out/. ../staging/${{ matrix.out_subdir }}/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.trip }}
+          path: staging
+          retention-days: 1
+
+  combine:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all trip builds
+        uses: actions/download-artifact@v4
+        with:
+          path: builds
+      - name: Merge into single Pages artifact
+        run: |
+          mkdir -p out
+          for d in builds/*/; do
+            cp -R "$d". out/
+          done
+          touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web/out
+          path: out
 
   deploy:
-    needs: build
+    needs: combine
     runs-on: ubuntu-latest
     environment:
       name: github-pages

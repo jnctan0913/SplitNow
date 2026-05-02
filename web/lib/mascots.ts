@@ -32,4 +32,5 @@ export const MASCOT_IMAGE: Partial<Record<Mascot, { src: string; scale: number; 
   CookieAnn:  { src: '/mascots/cookieann.png',  scale: 1.4,  translateY: '8%'  },
   OluMel:     { src: '/mascots/olumel.png',     scale: 1.4,  translateY: '12%' },
   LinaBell:   { src: '/mascots/linabell.png',   scale: 1.45, translateY: '12%' },
+  Gelatoni:   { src: '/mascots/gelatoni.png',   scale: 1.45, translateY: '10%' },
 };

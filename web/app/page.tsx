@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { api, actor as actorStore, passcode as passcodeStore, applyExpenseChange, clearBootCache } from '@/lib/api';
 import type { Bootstrap, Settlement, Member } from '@/lib/types';
 import type { CurrencyCode } from '@/lib/currency';
-import { CURRENCY_CODES, CURRENCIES } from '@/lib/currency';
+import { CURRENCIES, amountKey, currencyEpsilon } from '@/lib/currency';
+import { trip } from '@/lib/trips';
 import { Mascot } from '@/components/Mascot';
 import { ExpenseSheet } from '@/components/ExpenseSheet';
 import { PaymentSheet } from '@/components/PaymentSheet';
@@ -18,7 +19,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [me, setMe] = useState<Member | null>(null);
-  const [currency, setCurrency] = useState<CurrencyCode>('SGD');
+  const [currency, setCurrency] = useState<CurrencyCode>(trip.defaultCurrency);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -78,7 +79,7 @@ export default function Dashboard() {
   const myNet = myBalance?.net ?? 0;
   const tripExpenses = boot.expenses.filter((e) => !isPayment(e));
   const totalSpent = tripExpenses.reduce(
-    (acc, e) => acc + (Number(e[`amount_${currency.toLowerCase()}` as 'amount_sgd']) || 0),
+    (acc, e) => acc + (Number(e[amountKey(currency)]) || 0),
     0,
   );
 
@@ -164,7 +165,7 @@ function Header({ tripName, me }: { tripName: string; me: Member }) {
 function CurrencyToggle({ currency, onChange }: { currency: CurrencyCode; onChange: (c: CurrencyCode) => void }) {
   return (
     <div className="card-plush flex p-1 gap-1">
-      {CURRENCY_CODES.map((c) => (
+      {trip.currencies.map((c) => (
         <button
           key={c}
           onClick={() => onChange(c)}
@@ -185,7 +186,7 @@ function CurrencyToggle({ currency, onChange }: { currency: CurrencyCode; onChan
 
 function BalanceCard({ net, currency, mascot, name }: { net: number; currency: CurrencyCode; mascot: Member['mascot']; name: string }) {
   const owed = net > 0;
-  const settled = Math.abs(net) < (currency === 'JPY' ? 1 : 0.01);
+  const settled = Math.abs(net) < currencyEpsilon(currency);
   const bg = settled ? 'var(--color-cream-soft)' : owed ? '#E8F5EA' : '#FFE5E5';
   return (
     <section className="card-plush p-5" style={{ background: bg }}>
@@ -231,7 +232,7 @@ function TripSummary({ total, currency, expenseCount }: { total: number; currenc
 }
 
 function MemberStrip({ members, settlement, currency, myId }: { members: Member[]; settlement: Settlement; currency: CurrencyCode; myId: string }) {
-  const eps = currency === 'JPY' ? 1 : 0.01;
+  const eps = currencyEpsilon(currency);
   return (
     <section>
       <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Group</h2>

@@ -1,5 +1,6 @@
 import type { Expense, Member, Settlement, Balance, Transfer } from './types';
 import type { CurrencyCode } from './currency';
+import { amountKey, currencyDecimals } from './currency';
 
 // Mirrors the greedy algorithm in apps-script/Code.gs (greedyTransfers_).
 // Computing locally avoids a second server round-trip per refresh.
@@ -9,7 +10,7 @@ export function computeSettlement(
   members: Member[],
   currency: CurrencyCode,
 ): Settlement {
-  const col = `amount_${currency.toLowerCase()}` as 'amount_jpy' | 'amount_sgd' | 'amount_myr';
+  const col = amountKey(currency);
   const totals: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
 
   for (const e of expenses) {
@@ -23,7 +24,7 @@ export function computeSettlement(
     }
   }
 
-  const dp = currency === 'JPY' ? 0 : 2;
+  const dp = currencyDecimals(currency);
   const balances: Balance[] = members.map((m) => ({
     id: m.id,
     name: m.name,

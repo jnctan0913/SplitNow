@@ -85,6 +85,7 @@ export interface ItineraryItem {
   day_num: number;
   date: string;
   time: string;
+  time_fixed: boolean;
   title: string;
   notes: string;
   category: string;

@@ -336,7 +336,7 @@ function ItineraryRow({
       onClick={() => onTap(item)}
       className="card-plush p-3 w-full text-left flex flex-col gap-2 active:scale-[0.99] transition-transform"
     >
-      {item.time && (
+      {item.time && item.time_fixed !== false && (
         <span
           className="self-start text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full"
           style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}

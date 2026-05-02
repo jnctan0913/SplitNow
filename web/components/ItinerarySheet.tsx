@@ -63,6 +63,7 @@ export function ItinerarySheet({
 
   const [dayNum, setDayNum] = useState<number>(1);
   const [time, setTime] = useState<string>('');
+  const [timeFixed, setTimeFixed] = useState<boolean>(true);
   const [title, setTitle] = useState<string>('');
   const [category, setCategory] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
@@ -85,6 +86,7 @@ export function ItinerarySheet({
     if (item) {
       setDayNum(item.day_num || 1);
       setTime(item.time ?? '');
+      setTimeFixed(item.time_fixed !== false);
       setTitle(item.title ?? '');
       setCategory(item.category || settings.categories[0] || '');
       setNotes(item.notes ?? '');
@@ -95,6 +97,7 @@ export function ItinerarySheet({
       const startDay = Math.min(Math.max(initialDayNum ?? 1, 1), totalDays);
       setDayNum(startDay);
       setTime('');
+      setTimeFixed(true);
       setTitle('');
       setCategory(settings.categories[0] ?? '');
       setNotes('');
@@ -125,6 +128,7 @@ export function ItinerarySheet({
       day_num: dayNum,
       date,
       time: time.trim() || undefined,
+      time_fixed: timeFixed,
       title: title.trim(),
       notes: notes.trim() || undefined,
       category,
@@ -237,8 +241,19 @@ export function ItinerarySheet({
               </div>
             </section>
 
-            <section className="card-plush p-4 space-y-2">
-              <p className="text-xs uppercase tracking-wider opacity-60">Time</p>
+            <section className="card-plush p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-wider opacity-60">Time</p>
+                <label className="inline-flex items-center gap-2 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={timeFixed}
+                    onChange={(e) => setTimeFixed(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-peach-deep)]"
+                  />
+                  <span className="font-semibold">Fixed time</span>
+                </label>
+              </div>
               <input
                 type="text"
                 placeholder="10:00, EVENING, after lunch"
@@ -246,6 +261,11 @@ export function ItinerarySheet({
                 onChange={(e) => setTime(e.target.value)}
                 className="w-full bg-transparent outline-none text-base"
               />
+              <p className="text-[11px] opacity-60">
+                {timeFixed
+                  ? 'Shown as a pill on the list.'
+                  : 'Hidden from the list. Still used to keep this item in order.'}
+              </p>
             </section>
 
             <section className="card-plush p-4 space-y-2">

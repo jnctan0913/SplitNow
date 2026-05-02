@@ -21,14 +21,17 @@ function normalizePart(input: string): string {
   const s = input.trim().toUpperCase();
   if (!s) return s;
 
-  // ISO datetime that Sheets uses for time-only cells (1899-12-30 epoch).
-  // Convert to local clock time and round to nearest 5 min to absorb float noise.
-  const iso = input.match(/^1899-12-30T\d{2}:\d{2}:/);
+  // ISO datetime that Sheets uses for time-only cells. Sheets serializes these
+  // 1899-12-30-epoch values using the Asia/Singapore LMT offset (+6h55m), not
+  // the modern +8. Apply that offset to the UTC time so the result is browser-
+  // TZ independent. Round minutes to nearest 5 to absorb float noise.
+  const iso = input.match(/^1899-12-\d{2}T\d{2}:\d{2}:/);
   if (iso) {
     const d = new Date(input);
     if (!isNaN(d.getTime())) {
-      let h = d.getHours();
-      let m = Math.round(d.getMinutes() / 5) * 5;
+      const minutes = d.getUTCHours() * 60 + d.getUTCMinutes() + 6 * 60 + 55;
+      let h = Math.floor(minutes / 60) % 24;
+      let m = Math.round((minutes % 60) / 5) * 5;
       if (m === 60) { m = 0; h = (h + 1) % 24; }
       return formatTime(h, m);
     }
@@ -112,10 +115,13 @@ export function timeToMinutes(input: string | null | undefined): number | null {
   const first = raw.split(/\s*(?:-|—|–|to)\s*/i)[0].trim();
   if (!first) return null;
 
-  // ISO datetime that Sheets uses for time-only cells.
-  if (/^1899-12-30T/.test(first)) {
+  // ISO datetime that Sheets uses for time-only cells. See note in normalizePart
+  // about the +6h55m LMT offset.
+  if (/^1899-12-\d{2}T/.test(first)) {
     const d = new Date(first);
-    if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+    if (!isNaN(d.getTime())) {
+      return (d.getUTCHours() * 60 + d.getUTCMinutes() + 6 * 60 + 55) % (24 * 60);
+    }
   }
 
   const upper = first.toUpperCase();

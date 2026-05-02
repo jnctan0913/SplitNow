@@ -35,7 +35,7 @@ const SETTINGS_HEADERS = ['key', 'value', 'description'];
 
 const ITINERARY_HEADERS = [
   'id', 'created_at', 'updated_at',
-  'day_num', 'date', 'time',
+  'day_num', 'date', 'time', 'time_fixed',
   'title', 'notes', 'category',
   'map_url', 'link', 'cost_note',
   'position',
@@ -83,6 +83,15 @@ function ensureSheet_(ss, name, headers) {
   if (sh.getLastRow() === 0) {
     sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
     sh.setFrozenRows(1);
+    return;
+  }
+  // Idempotent column migration: append any new headers that aren't yet on the
+  // sheet so older deployments pick up new schema fields without losing data.
+  const lastCol = sh.getLastColumn();
+  const existing = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const missing = headers.filter((h) => existing.indexOf(h) === -1);
+  if (missing.length) {
+    sh.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
   }
 }
 
@@ -337,6 +346,7 @@ function addItinerary_(item, actor) {
       case 'day_num':         return Number(item.day_num) || 1;
       case 'date':            return item.date || '';
       case 'time':            return item.time || '';
+      case 'time_fixed':      return item.time_fixed === false ? false : true;
       case 'title':           return item.title;
       case 'notes':           return item.notes || '';
       case 'category':        return item.category || 'Other';

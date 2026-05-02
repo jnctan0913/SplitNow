@@ -232,29 +232,45 @@ function MemberStrip({ members, settlement, currency, myId }: { members: Member[
 
 function SettlementList({ settlement, myId }: { settlement: Settlement; myId: string }) {
   if (!settlement.transfers.length) return null;
+
+  const grouped = new Map<string, { mascot: Member['mascot']; name: string; rows: typeof settlement.transfers }>();
+  for (const t of settlement.transfers) {
+    const g = grouped.get(t.from);
+    if (g) {
+      g.rows.push(t);
+    } else {
+      grouped.set(t.from, { mascot: t.from_mascot, name: t.from_name, rows: [t] });
+    }
+  }
+
   return (
     <section>
       <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Settle up</h2>
       <ul className="space-y-2">
-        {settlement.transfers.map((t, i) => {
-          const involvesMe = t.from === myId || t.to === myId;
+        {Array.from(grouped.entries()).map(([fromId, g]) => {
+          const involvesMe = fromId === myId || g.rows.some((r) => r.to === myId);
           return (
             <li
-              key={i}
-              className="card-plush p-3 flex items-center gap-3"
+              key={fromId}
+              className="card-plush p-3"
               style={involvesMe ? { boxShadow: '0 0 0 2px var(--color-peach), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
             >
-              <Mascot name={t.from_mascot} size="sm" />
-              <span className="text-sm opacity-60">→</span>
-              <Mascot name={t.to_mascot} size="sm" />
-              <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <Mascot name={g.mascot} size="sm" />
                 <p className="text-sm">
-                  <span className="font-semibold">{t.from_name}</span>
-                  <span className="opacity-60"> pays </span>
-                  <span className="font-semibold">{t.to_name}</span>
+                  <span className="font-semibold">{g.name}</span>
+                  <span className="opacity-60"> pays</span>
                 </p>
               </div>
-              <p className="font-bold">{formatMoney(t.amount, settlement.currency)}</p>
+              <ul className="ml-11 space-y-1.5">
+                {g.rows.map((r, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <Mascot name={r.to_mascot} size="sm" />
+                    <span className="text-sm font-semibold flex-1">{r.to_name}</span>
+                    <span className="font-bold">{formatMoney(r.amount, settlement.currency)}</span>
+                  </li>
+                ))}
+              </ul>
             </li>
           );
         })}

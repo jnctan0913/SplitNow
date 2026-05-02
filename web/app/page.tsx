@@ -86,13 +86,16 @@ export default function Dashboard() {
 
       <BalanceCard net={myNet} currency={currency} mascot={me.mascot} name={me.name} />
 
-      <TripSummary total={totalSpent} currency={currency} expenseCount={boot.expenses.length} />
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <TripSummary total={totalSpent} currency={currency} expenseCount={boot.expenses.length} />
+        </div>
+        <AddCard onClick={() => setSheetOpen(true)} />
+      </div>
 
       <MemberStrip members={boot.members} settlement={settlement} currency={currency} myId={me.id} />
 
       <SettlementList settlement={settlement} myId={me.id} />
-
-      <FabAdd onClick={() => setSheetOpen(true)} />
 
       <ExpenseSheet
         open={sheetOpen}
@@ -279,15 +282,16 @@ function SettlementList({ settlement, myId }: { settlement: Settlement; myId: st
   );
 }
 
-function FabAdd({ onClick }: { onClick: () => void }) {
+function AddCard({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="fixed right-6 z-50 w-14 h-14 rounded-full font-bold text-2xl shadow-lg flex items-center justify-center"
-      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)', background: 'var(--color-peach-deep)', color: 'var(--color-cocoa)' }}
-      aria-label="Add expense"
       onClick={onClick}
+      aria-label="Add expense"
+      className="card-plush h-auto aspect-square w-20 flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform"
+      style={{ background: 'var(--color-peach-deep)', color: 'var(--color-cocoa)' }}
     >
-      +
+      <span className="text-3xl font-bold leading-none">+</span>
+      <span className="text-[10px] uppercase tracking-wider font-semibold">Add</span>
     </button>
   );
 }

@@ -78,6 +78,18 @@ const ITINERARY_HEADERS = [
 
 const DEFAULT_CATEGORIES = ['Accommodation', 'Transport', 'Entertainment', 'Food', 'Shopping', 'Other'];
 
+const DEFAULT_ITINERARY_HELP = [
+  'You can bulk-add itinerary items by editing the Itinerary tab directly in this spreadsheet.',
+  '',
+  'Required columns: day_num, date, title, category.',
+  'Optional: time, notes, map_url, link, cost_note, position.',
+  '',
+  'For tap-to-edit and tap-to-delete to work, every row needs a unique value in column A (id). Easiest: paste this into A2, copy down, then paste-as-values to freeze it:',
+  '=CONCATENATE("i_", TEXT(NOW(),"yyyymmddhhmmss"), "_", ROW())',
+  '',
+  'Set time_fixed to TRUE if the time is exact, leave blank for "approximate". Leave created_at, updated_at, last_edited_by, deleted_at empty.',
+].join('\n');
+
 // All from->to pairs across the trip's currencies. e.g. for [CNY,SGD,MYR] this
 // produces CNYSGD, SGDCNY, CNYMYR, MYRCNY, SGDMYR, MYRSGD.
 const RATE_PAIRS = (function () {
@@ -174,11 +186,12 @@ function seedSettingsIfEmpty_(ss) {
   const sh = ss.getSheetByName(SHEETS.settings);
   if (sh.getLastRow() > 1) return;
   const rows = [
-    ['passcode',   'CHANGE_ME',                       'Shared passcode required for all writes - update before sharing'],
-    ['trip_name',  TRIP_INFO.name,                    'Display name'],
-    ['trip_start', TRIP_INFO.start,                   'ISO date'],
-    ['trip_end',   TRIP_INFO.end,                     'ISO date'],
-    ['categories', JSON.stringify(DEFAULT_CATEGORIES), 'JSON array of expense categories'],
+    ['passcode',       'CHANGE_ME',                       'Shared passcode required for all writes - update before sharing'],
+    ['trip_name',      TRIP_INFO.name,                    'Display name'],
+    ['trip_start',     TRIP_INFO.start,                   'ISO date'],
+    ['trip_end',       TRIP_INFO.end,                     'ISO date'],
+    ['categories',     JSON.stringify(DEFAULT_CATEGORIES), 'JSON array of expense categories'],
+    ['itinerary_help', DEFAULT_ITINERARY_HELP,             'Free-form text shown on the Settings page; edit anytime, no redeploy needed'],
   ];
   sh.getRange(2, 1, rows.length, SETTINGS_HEADERS.length).setValues(rows);
 }

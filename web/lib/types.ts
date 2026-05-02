@@ -17,6 +17,10 @@ export interface Settings {
   trip_start: string;
   trip_end: string;
   categories: string[];
+  // Free-form markdown-ish text rendered as the "Itinerary tips" card on
+  // the Settings page. Lives in the source sheet so it's editable without
+  // a redeploy. Optional; section is hidden when empty.
+  itinerary_help?: string;
 }
 
 // Pair keys are `${from}${to}` like 'JPYSGD'. Per-trip rate set is determined

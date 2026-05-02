@@ -126,6 +126,20 @@ export default function Settings() {
         </p>
       </section>
 
+      {boot.settings.itinerary_help && boot.settings.itinerary_help.trim() && (
+        <section>
+          <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Itinerary tips</h2>
+          <div className="card-plush p-4">
+            <p className="text-sm whitespace-pre-line opacity-80 leading-relaxed">
+              {boot.settings.itinerary_help}
+            </p>
+          </div>
+          <p className="text-[11px] opacity-50 mt-2 px-1">
+            Edit in the source spreadsheet's Settings tab (key: <code>itinerary_help</code>).
+          </p>
+        </section>
+      )}
+
       <button
         onClick={logout}
         className="w-full py-3 rounded-[var(--radius-pillow)] font-semibold"

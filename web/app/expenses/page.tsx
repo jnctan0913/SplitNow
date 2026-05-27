@@ -13,6 +13,7 @@ import { PaymentSheet } from '@/components/PaymentSheet';
 import { formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { categoryIcon, isPayment } from '@/lib/categories';
+import { asset } from '@/lib/asset';
 
 type Group = { date: string; dayNum: number; items: Expense[] };
 
@@ -250,6 +251,8 @@ function ExpenseRow({
     >
       {payer ? (
         <Mascot name={payer.mascot} size="md" />
+      ) : expense.paid_by === 'fund' ? (
+        <img src={asset('/shared_wallet.png')} alt="Fund" className="h-12 w-12 object-contain" />
       ) : (
         <span
           className="inline-flex h-12 w-12 rounded-full"

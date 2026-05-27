@@ -10,34 +10,22 @@ export function computeSettlement(
   members: Member[],
   currency: CurrencyCode,
   rates?: Rates,
-  settings?: Settings,
+  settings?: Settings,  // kept for API compat, no longer used
 ): Settlement {
   const col = amountKey(currency);
   const totals: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
 
   for (const e of expenses) {
     if (e.deleted_at) continue;
+    // Fund expenses are pre-funded communally in cash; they don't affect who
+    // owes whom between members, so skip them entirely for settlement.
+    if (e.paid_by === 'fund') continue;
     const total = Number(e[col]) || 0;
     totals[e.paid_by] = (totals[e.paid_by] ?? 0) + total;
 
     const shares = computeShares(e, total, members);
     for (const id of Object.keys(shares)) {
       totals[id] = (totals[id] ?? 0) - shares[id]!;
-    }
-  }
-
-  // Credit each member their fund contribution. Fund expenses already debit
-  // members via equal split; this adds the matching credit so the net reflects
-  // only the surplus/deficit, distributed equally across everyone.
-  const perPerson = Number(settings?.fund_amount_per_person) || 0;
-  const fundCur = settings?.fund_currency;
-  if (perPerson > 0 && fundCur) {
-    let credit = perPerson;
-    if (fundCur !== currency && rates) {
-      credit = perPerson * (rates[fundCur + currency] ?? 1);
-    }
-    for (const m of members) {
-      totals[m.id] = (totals[m.id] ?? 0) + credit;
     }
   }
 

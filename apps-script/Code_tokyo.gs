@@ -889,7 +889,9 @@ function computeSettlement_(currency) {
   const totals = {};
   members.forEach(m => totals[m.id] = 0);
 
+  // Fund expenses are pre-funded communally in cash; skip them for settlement.
   expenses.forEach(e => {
+    if (e.paid_by === 'fund') return;
     const total = Number(e[col]) || 0;
     totals[e.paid_by] = (totals[e.paid_by] || 0) + total;
 
@@ -898,21 +900,6 @@ function computeSettlement_(currency) {
       totals[mid] = (totals[mid] || 0) - splits[mid];
     });
   });
-
-  // Credit each member their fund contribution. Fund expenses already debit
-  // members via equal split; this adds the matching credit so the net reflects
-  // only the surplus/deficit, distributed equally across everyone.
-  const fundAmountRaw = getSetting_('fund_amount_per_person');
-  const fundCurrency = getSetting_('fund_currency');
-  if (fundAmountRaw && fundCurrency) {
-    let credit = Number(fundAmountRaw);
-    if (fundCurrency !== cur) {
-      const rates = getRates_();
-      const rate = Number(rates[fundCurrency + cur]);
-      if (rate) credit = credit * rate;
-    }
-    members.forEach(m => { totals[m.id] = (totals[m.id] || 0) + credit; });
-  }
 
   const dp = decimalsFor_(cur);
   const balances = members.map(m => ({ id: m.id, name: m.name, mascot: m.mascot, net: round_(totals[m.id] || 0, dp) }));

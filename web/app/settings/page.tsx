@@ -6,6 +6,10 @@ import { api, actor as actorStore, passcode as passcodeStore, clearBootCache } f
 import type { Bootstrap } from '@/lib/types';
 import { Mascot } from '@/components/Mascot';
 import { categoryIcon } from '@/lib/categories';
+import { asset } from '@/lib/asset';
+import { trip } from '@/lib/trips';
+import { CURRENCIES, type CurrencyCode } from '@/lib/currency';
+import { cn } from '@/lib/utils';
 
 export default function Settings() {
   const router = useRouter();
@@ -126,6 +130,8 @@ export default function Settings() {
         </p>
       </section>
 
+      <FundSettings boot={boot} onSaved={setBoot} />
+
       {boot.settings.itinerary_help && boot.settings.itinerary_help.trim() && (
         <section>
           <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Itinerary tips</h2>
@@ -148,6 +154,97 @@ export default function Settings() {
         Log out {me ? `(${me.name})` : ''}
       </button>
     </div>
+  );
+}
+
+function FundSettings({ boot, onSaved }: { boot: Bootstrap; onSaved: (b: Bootstrap) => void }) {
+  const existing = boot.settings;
+  const [amount, setAmount] = useState(String(existing.fund_amount_per_person ?? ''));
+  const [currency, setCurrency] = useState<CurrencyCode>(
+    (existing.fund_currency as CurrencyCode) ?? trip.defaultCurrency,
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSave() {
+    const n = Number(amount);
+    if (!(n > 0)) { setErr('Enter an amount greater than zero'); return; }
+    setErr(null);
+    setSaving(true);
+    try {
+      await api.updateSettings('fund_amount_per_person', n);
+      await api.updateSettings('fund_currency', currency);
+      const fresh = await api.bootstrap();
+      onSaved(fresh);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Shared Fund</h2>
+      <div className="card-plush p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <img src={asset('/shared_wallet.png')} alt="Fund" className="w-12 h-12 object-contain shrink-0" />
+          <p className="text-sm opacity-70 leading-snug">
+            Each member contributes the same amount to a shared wallet.
+            Fund expenses are split equally and settled automatically.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-xs uppercase tracking-wider opacity-60">Amount per person</p>
+          <input
+            inputMode="decimal"
+            type="number"
+            min="0"
+            placeholder="e.g. 500"
+            value={amount}
+            onChange={(e) => { setAmount(e.target.value); setSaved(false); }}
+            className="w-full text-2xl font-bold bg-transparent outline-none"
+          />
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wider opacity-60 mb-2">Currency</p>
+          <div className="flex p-1 gap-1 rounded-[var(--radius-pillow)]" style={{ background: 'var(--color-cream)' }}>
+            {trip.currencies.map((c) => (
+              <button
+                key={c}
+                onClick={() => { setCurrency(c); setSaved(false); }}
+                className={cn(
+                  'flex-1 py-2 rounded-[var(--radius-pillow)] text-sm font-semibold transition-colors',
+                  currency === c ? 'shadow-sm' : 'opacity-60',
+                )}
+                style={currency === c ? { background: 'var(--color-peach)' } : undefined}
+              >
+                {CURRENCIES[c].symbol} {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {err && <p className="text-sm font-semibold" style={{ color: 'var(--color-blush-deep)' }}>{err}</p>}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-3 rounded-[var(--radius-pillow)] font-bold text-sm shadow-sm disabled:opacity-60"
+          style={{
+            background: saved ? 'var(--color-mint)' : 'var(--color-peach-deep)',
+            color: 'var(--color-cocoa)',
+          }}
+        >
+          {saving ? 'Saving...' : saved ? 'Saved!' : 'Save fund settings'}
+        </button>
+      </div>
+    </section>
   );
 }
 

@@ -6,6 +6,7 @@ import { api, actor as actorStore, passcode as passcodeStore, applyExpenseChange
 import type { Bootstrap, Settlement, Member, Rates, Settings } from '@/lib/types';
 import type { CurrencyCode } from '@/lib/currency';
 import { CURRENCIES, amountKey, currencyEpsilon } from '@/lib/currency';
+import { asset } from '@/lib/asset';
 import { trip } from '@/lib/trips';
 import { Mascot } from '@/components/Mascot';
 import { ExpenseSheet } from '@/components/ExpenseSheet';
@@ -378,7 +379,7 @@ function FundCard({
   return (
     <section className="card-plush p-4">
       <div className="flex items-center gap-3">
-        <img src="/shared_wallet.png" alt="Shared fund" className="w-12 h-12 object-contain shrink-0" />
+        <img src={asset('/shared_wallet.png')} alt="Shared fund" className="w-12 h-12 object-contain shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs uppercase tracking-wider opacity-60">Shared Fund</p>
           <p className="text-xs opacity-50 mt-0.5">

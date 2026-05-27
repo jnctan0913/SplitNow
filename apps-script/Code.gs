@@ -563,6 +563,7 @@ function doPost(e) {
     if (action === 'addItinerary')    return addItinerary_(body.item, body.actor);
     if (action === 'updateItinerary') return updateItinerary_(body.id, body.fields, body.actor);
     if (action === 'deleteItinerary') return deleteItinerary_(body.id, body.actor);
+    if (action === 'updateSettings')  return updateSettings_(body.key, body.value);
     if (action === 'verify')          return { ok: true };
     throw new Error('Unknown action: ' + action);
   });
@@ -736,6 +737,27 @@ function deleteExpense_(id, actor) {
   sh.getRange(rowIdx, colUpdated).setValue(new Date().toISOString());
   if (actor) sh.getRange(rowIdx, colEditor).setValue(actor);
   return { id, deleted: true };
+}
+
+// Only fund settings are editable via the API. All other settings are
+// managed directly in the spreadsheet to avoid accidental overwrites.
+const EDITABLE_SETTINGS = ['fund_amount_per_person', 'fund_currency'];
+
+function updateSettings_(key, value) {
+  if (!EDITABLE_SETTINGS.includes(key)) {
+    throw new Error('Setting "' + key + '" is not editable via the API');
+  }
+  const sh = sheet_(SHEETS.settings);
+  const data = sh.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === key) {
+      sh.getRange(i + 1, 2).setValue(value);
+      return { key: key, value: value };
+    }
+  }
+  // Row doesn't exist yet (sheet was seeded before this feature was added).
+  sh.appendRow([key, value, '']);
+  return { key: key, value: value };
 }
 
 function validateExpense_(e) {

@@ -164,6 +164,8 @@ export const api = {
   updateItinerary: (id: string, fields: Partial<NewItineraryInput>) =>
     post<ItineraryItem>('updateItinerary', { id, fields }),
   deleteItinerary: (id: string) => post<{ id: string; deleted: true }>('deleteItinerary', { id }),
+  updateSettings: (key: string, value: string | number) =>
+    post<{ key: string; value: string | number }>('updateSettings', { key, value }),
 };
 
 export interface NewExpenseInput {

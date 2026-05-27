@@ -21,6 +21,10 @@ export interface Settings {
   // the Settings page. Lives in the source sheet so it's editable without
   // a redeploy. Optional; section is hidden when empty.
   itinerary_help?: string;
+  // Shared fund: each member contributes this amount (in fund_currency) to a
+  // pooled wallet. Leave both blank to disable the feature entirely.
+  fund_amount_per_person?: number;
+  fund_currency?: string;
 }
 
 // Pair keys are `${from}${to}` like 'JPYSGD'. Per-trip rate set is determined

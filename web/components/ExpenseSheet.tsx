@@ -158,7 +158,14 @@ export function ExpenseSheet({
   const amountSumOk = Math.abs(amountDelta) < eps;
   const percentSumOk = Math.abs(percentDelta) < 0.01;
 
+  const isFund = paidBy === 'fund';
+
   function buildSplitData(): Record<string, number> {
+    if (isFund) {
+      const out: Record<string, number> = {};
+      for (const m of activeMembers) out[m.id] = 1;
+      return out;
+    }
     if (mode === 'equal') {
       const out: Record<string, number> = {};
       for (const m of activeMembers) if (equalChecked[m.id]) out[m.id] = 1;
@@ -186,9 +193,11 @@ export function ExpenseSheet({
     if (!category) return 'Pick a category';
     if (!paidBy) return 'Pick who paid';
     if (!date) return 'Pick a date';
-    if (Object.keys(splitData).length === 0) return 'Pick at least one person to split with';
-    if (mode === 'amount' && !amountSumOk) return `Amounts must sum to ${formatMoney(totalAmount, curr)}`;
-    if (mode === 'percent' && !percentSumOk) return 'Percentages must sum to 100';
+    if (!isFund) {
+      if (Object.keys(splitData).length === 0) return 'Pick at least one person to split with';
+      if (mode === 'amount' && !amountSumOk) return `Amounts must sum to ${formatMoney(totalAmount, curr)}`;
+      if (mode === 'percent' && !percentSumOk) return 'Percentages must sum to 100';
+    }
     return null;
   }
 
@@ -207,7 +216,7 @@ export function ExpenseSheet({
       amount: totalAmount,
       currency: curr,
       paid_by: paidBy,
-      split_mode: mode,
+      split_mode: isFund ? 'equal' : mode,
       split_data: splitData,
     };
     try {
@@ -362,6 +371,22 @@ export function ExpenseSheet({
 
             <section className="space-y-2">
               <p className="text-xs uppercase tracking-wider opacity-60 px-1">Paid by</p>
+              {settings.fund_amount_per_person && (
+                <button
+                  onClick={() => setPaidBy('fund')}
+                  className={cn(
+                    'w-full card-plush flex items-center gap-3 p-3 transition-transform',
+                    isFund && 'scale-[1.01]',
+                  )}
+                  style={isFund ? { boxShadow: '0 0 0 3px var(--color-peach-deep), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
+                >
+                  <img src="/shared_wallet.png" alt="Shared fund" className="w-10 h-10 object-contain shrink-0" />
+                  <div className="text-left">
+                    <p className="text-sm font-bold">Shared Fund</p>
+                    <p className="text-xs opacity-60">Equal split, all members</p>
+                  </div>
+                </button>
+              )}
               <div className="grid grid-cols-3 gap-2">
                 {activeMembers.map((m) => {
                   const sel = paidBy === m.id;
@@ -385,6 +410,22 @@ export function ExpenseSheet({
 
             <section className="space-y-3">
               <p className="text-xs uppercase tracking-wider opacity-60 px-1">Split</p>
+              {isFund ? (
+                <div className="card-plush p-3 space-y-1">
+                  {activeMembers.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center gap-3 px-2 py-2 rounded-[var(--radius-pillow)]"
+                      style={{ background: 'var(--color-cream)' }}
+                    >
+                      <Mascot name={m.mascot} size="sm" />
+                      <span className="flex-1 text-sm font-semibold">{m.name}</span>
+                      <span className="text-xs opacity-50">equal</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+              <>
               <div className="card-plush flex p-1 gap-1">
                 {MODES.map((mItem) => (
                   <button
@@ -487,6 +528,8 @@ export function ExpenseSheet({
                     <span className="font-semibold">{percentSum.toFixed(1)} / 100</span>
                   </div>
                 </div>
+              )}
+              </>
               )}
             </section>
 

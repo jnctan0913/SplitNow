@@ -1,4 +1,4 @@
-import type { Expense, Member, Settlement, Balance, Transfer } from './types';
+import type { Expense, Member, Settlement, Balance, Transfer, Rates, Settings } from './types';
 import type { CurrencyCode } from './currency';
 import { amountKey, currencyDecimals } from './currency';
 
@@ -9,6 +9,8 @@ export function computeSettlement(
   expenses: Expense[],
   members: Member[],
   currency: CurrencyCode,
+  rates?: Rates,
+  settings?: Settings,
 ): Settlement {
   const col = amountKey(currency);
   const totals: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
@@ -21,6 +23,21 @@ export function computeSettlement(
     const shares = computeShares(e, total, members);
     for (const id of Object.keys(shares)) {
       totals[id] = (totals[id] ?? 0) - shares[id]!;
+    }
+  }
+
+  // Credit each member their fund contribution. Fund expenses already debit
+  // members via equal split; this adds the matching credit so the net reflects
+  // only the surplus/deficit, distributed equally across everyone.
+  const perPerson = Number(settings?.fund_amount_per_person) || 0;
+  const fundCur = settings?.fund_currency;
+  if (perPerson > 0 && fundCur) {
+    let credit = perPerson;
+    if (fundCur !== currency && rates) {
+      credit = perPerson * (rates[fundCur + currency] ?? 1);
+    }
+    for (const m of members) {
+      totals[m.id] = (totals[m.id] ?? 0) + credit;
     }
   }
 

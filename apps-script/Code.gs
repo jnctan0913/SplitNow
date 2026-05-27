@@ -520,12 +520,14 @@ function seedSettingsIfEmpty_(ss) {
   const sh = ss.getSheetByName(SHEETS.settings);
   if (sh.getLastRow() > 1) return;
   const rows = [
-    ['passcode',       'CHANGE_ME',                       'Shared passcode required for all writes - update before sharing'],
-    ['trip_name',      TRIP_INFO.name,                    'Display name'],
-    ['trip_start',     TRIP_INFO.start,                   'ISO date'],
-    ['trip_end',       TRIP_INFO.end,                     'ISO date'],
-    ['categories',     JSON.stringify(DEFAULT_CATEGORIES), 'JSON array of expense categories'],
-    ['itinerary_help', DEFAULT_ITINERARY_HELP,             'Free-form text shown on the Settings page; edit anytime, no redeploy needed'],
+    ['passcode',              'CHANGE_ME',                       'Shared passcode required for all writes - update before sharing'],
+    ['trip_name',             TRIP_INFO.name,                    'Display name'],
+    ['trip_start',            TRIP_INFO.start,                   'ISO date'],
+    ['trip_end',              TRIP_INFO.end,                     'ISO date'],
+    ['categories',            JSON.stringify(DEFAULT_CATEGORIES), 'JSON array of expense categories'],
+    ['itinerary_help',        DEFAULT_ITINERARY_HELP,             'Free-form text shown on the Settings page; edit anytime, no redeploy needed'],
+    ['fund_amount_per_person','',                                 'Amount each member contributes to the shared fund (in fund_currency). Leave blank to disable.'],
+    ['fund_currency',         '',                                 'Currency of fund contributions, e.g. CNY. Leave blank to disable.'],
   ];
   sh.getRange(2, 1, rows.length, SETTINGS_HEADERS.length).setValues(rows);
 }
@@ -744,6 +746,7 @@ function validateExpense_(e) {
   if (!e.category) throw new Error('category required');
   if (!e.paid_by) throw new Error('paid_by required');
   if (!['equal', 'amount', 'percent'].includes(e.split_mode)) throw new Error('split_mode must be equal/amount/percent');
+  if (e.paid_by === 'fund' && e.split_mode !== 'equal') throw new Error('fund expenses must use equal split');
 }
 
 // =====================================================================
@@ -951,6 +954,21 @@ function computeSettlement_(currency) {
       totals[mid] = (totals[mid] || 0) - splits[mid];
     });
   });
+
+  // Credit each member their fund contribution. Fund expenses already debit
+  // members via equal split; this adds the matching credit so the net reflects
+  // only the surplus/deficit, distributed equally across everyone.
+  const fundAmountRaw = getSetting_('fund_amount_per_person');
+  const fundCurrency = getSetting_('fund_currency');
+  if (fundAmountRaw && fundCurrency) {
+    let credit = Number(fundAmountRaw);
+    if (fundCurrency !== cur) {
+      const rates = getRates_();
+      const rate = Number(rates[fundCurrency + cur]);
+      if (rate) credit = credit * rate;
+    }
+    members.forEach(m => { totals[m.id] = (totals[m.id] || 0) + credit; });
+  }
 
   // Greedy: largest creditor pays largest debtor
   const dp = decimalsFor_(cur);

@@ -373,20 +373,6 @@ export function ExpenseSheet({
             <section className="space-y-2">
               <p className="text-xs uppercase tracking-wider opacity-60 px-1">Paid by</p>
               <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => setPaidBy('fund')}
-                  className={cn(
-                    'col-span-3 card-plush flex items-center gap-3 px-4 py-3 transition-transform',
-                    isFund && 'scale-[1.01]',
-                  )}
-                  style={isFund ? { boxShadow: '0 0 0 3px var(--color-peach-deep), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
-                >
-                  <img src={asset('/shared_wallet.png')} alt="Shared fund" className="h-12 w-12 object-contain shrink-0" />
-                  <div className="text-left">
-                    <p className="text-sm font-bold">Shared Fund</p>
-                    <p className="text-xs opacity-60">Equal split · all members</p>
-                  </div>
-                </button>
                 {activeMembers.map((m) => {
                   const sel = paidBy === m.id;
                   return (
@@ -404,6 +390,19 @@ export function ExpenseSheet({
                     </button>
                   );
                 })}
+                <button
+                  onClick={() => setPaidBy('fund')}
+                  className={cn(
+                    'card-plush flex flex-col items-center py-3 transition-transform',
+                    isFund && 'scale-[1.02]',
+                  )}
+                  style={isFund ? { boxShadow: '0 0 0 3px var(--color-peach-deep), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
+                >
+                  <div className="h-12 w-12 flex items-center justify-center">
+                    <img src={asset('/shared_wallet.png')} alt="Shared fund" className="h-12 w-12 object-contain" />
+                  </div>
+                  <span className="text-xs font-semibold mt-2 truncate max-w-[80px]">Fund</span>
+                </button>
               </div>
             </section>
 

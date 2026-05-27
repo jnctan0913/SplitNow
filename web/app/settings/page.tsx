@@ -67,28 +67,30 @@ export default function Settings() {
         <h1 className="text-lg font-bold">Trip details</h1>
       </header>
 
-      <section className="card-plush p-4 space-y-1">
-        <p className="text-xs uppercase tracking-wider opacity-60">Trip</p>
-        <p className="text-base font-semibold">{boot.settings.trip_name}</p>
-        <p className="text-sm opacity-70">
-          {fmtDate(boot.settings.trip_start)} → {fmtDate(boot.settings.trip_end)}
-        </p>
-      </section>
+      <Collapsible title="Trip">
+        <div className="card-plush p-4 space-y-1">
+          <p className="text-base font-semibold">{boot.settings.trip_name}</p>
+          <p className="text-sm opacity-70">
+            {fmtDate(boot.settings.trip_start)} → {fmtDate(boot.settings.trip_end)}
+          </p>
+        </div>
+      </Collapsible>
 
-      <section>
-        <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Exchange rates</h2>
-        <ul className="card-plush p-3 space-y-2">
-          {Object.entries(boot.rates).map(([pair, rate]) => (
-            <li key={pair} className="flex justify-between text-sm">
-              <span className="opacity-70">1 {pair.slice(0, 3)} =</span>
-              <span className="font-mono font-semibold">{Number(rate).toFixed(6)} {pair.slice(3)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-[11px] opacity-50 mt-2 px-1">
-          Pulled live from Google Finance via the source spreadsheet.
-        </p>
-      </section>
+      <Collapsible title="Exchange rates">
+        <div>
+          <ul className="card-plush p-3 space-y-2">
+            {Object.entries(boot.rates).map(([pair, rate]) => (
+              <li key={pair} className="flex justify-between text-sm">
+                <span className="opacity-70">1 {pair.slice(0, 3)} =</span>
+                <span className="font-mono font-semibold">{Number(rate).toFixed(6)} {pair.slice(3)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] opacity-50 mt-2 px-1">
+            Pulled live from Google Finance via the source spreadsheet.
+          </p>
+        </div>
+      </Collapsible>
 
       <Collapsible title="Shared Fund">
         <FundSettings boot={boot} onSaved={setBoot} />
@@ -116,37 +118,39 @@ export default function Settings() {
         </ul>
       </Collapsible>
 
-      <section>
-        <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Categories</h2>
-        <div className="card-plush p-3 flex flex-wrap gap-2">
-          {boot.settings.categories.map((c) => (
-            <span
-              key={c}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-medium"
-              style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
-            >
-              <i className={`${categoryIcon(c)} text-sm leading-none`} />
-              {c}
-            </span>
-          ))}
+      <Collapsible title="Categories">
+        <div>
+          <div className="card-plush p-3 flex flex-wrap gap-2">
+            {boot.settings.categories.map((c) => (
+              <span
+                key={c}
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-medium"
+                style={{ background: 'var(--color-cream)', color: 'var(--color-cocoa)' }}
+              >
+                <i className={`${categoryIcon(c)} text-sm leading-none`} />
+                {c}
+              </span>
+            ))}
+          </div>
+          <p className="text-[10px] opacity-50 mt-2 px-1">
+            Icons by <a href="https://www.flaticon.com/uicons" className="underline">Flaticon</a>
+          </p>
         </div>
-        <p className="text-[10px] opacity-50 mt-2 px-1">
-          Icons by <a href="https://www.flaticon.com/uicons" className="underline">Flaticon</a>
-        </p>
-      </section>
+      </Collapsible>
 
       {boot.settings.itinerary_help && boot.settings.itinerary_help.trim() && (
-        <section>
-          <h2 className="text-sm font-semibold opacity-70 mb-2 px-1">Itinerary tips</h2>
-          <div className="card-plush p-4">
-            <p className="text-sm whitespace-pre-line opacity-80 leading-relaxed">
-              {boot.settings.itinerary_help}
+        <Collapsible title="Itinerary tips">
+          <div>
+            <div className="card-plush p-4">
+              <p className="text-sm whitespace-pre-line opacity-80 leading-relaxed">
+                {boot.settings.itinerary_help}
+              </p>
+            </div>
+            <p className="text-[11px] opacity-50 mt-2 px-1">
+              Edit in the source spreadsheet's Settings tab (key: <code>itinerary_help</code>).
             </p>
           </div>
-          <p className="text-[11px] opacity-50 mt-2 px-1">
-            Edit in the source spreadsheet's Settings tab (key: <code>itinerary_help</code>).
-          </p>
-        </section>
+        </Collapsible>
       )}
 
       <button

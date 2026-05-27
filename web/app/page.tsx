@@ -302,7 +302,7 @@ function SettlementList({
           All settled.
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-2 max-h-[480px] overflow-y-auto pr-0.5">
           {Array.from(grouped.entries()).map(([fromId, g]) => {
             const involvesMe = fromId === myId || g.rows.some((r) => r.to === myId);
             return (

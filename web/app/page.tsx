@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, actor as actorStore, passcode as passcodeStore, applyExpenseChange, clearBootCache } from '@/lib/api';
-import type { Bootstrap, Settlement, Member, Rates, Settings } from '@/lib/types';
+import type { Bootstrap, Settlement, Member } from '@/lib/types';
 import type { CurrencyCode } from '@/lib/currency';
 import { CURRENCIES, amountKey, currencyEpsilon } from '@/lib/currency';
-import { asset } from '@/lib/asset';
 import { trip } from '@/lib/trips';
 import { Mascot } from '@/components/Mascot';
 import { ExpenseSheet } from '@/components/ExpenseSheet';
@@ -107,14 +106,6 @@ export default function Dashboard() {
         </div>
         <AddCard onClick={() => setSheetOpen(true)} />
       </div>
-
-      <FundCard
-        settings={boot.settings}
-        rates={boot.rates}
-        expenses={boot.expenses}
-        currency={currency}
-        memberCount={boot.members.filter((m) => m.active !== false).length}
-      />
 
       <MemberStrip members={boot.members} settlement={settlement} currency={currency} myId={me.id} />
 
@@ -341,63 +332,6 @@ function SettlementList({
           })}
         </ul>
       )}
-    </section>
-  );
-}
-
-function FundCard({
-  settings,
-  rates,
-  expenses,
-  currency,
-  memberCount,
-}: {
-  settings: Settings;
-  rates: Rates;
-  expenses: Bootstrap['expenses'];
-  currency: CurrencyCode;
-  memberCount: number;
-}) {
-  const perPerson = Number(settings.fund_amount_per_person) || 0;
-  const fundCur = settings.fund_currency;
-  if (!perPerson || !fundCur) return null;
-
-  let creditPerPerson = perPerson;
-  if (fundCur !== currency) {
-    creditPerPerson = perPerson * (rates[fundCur + currency] ?? 1);
-  }
-
-  const col = amountKey(currency);
-  const spent = expenses
-    .filter((e) => !e.deleted_at && e.paid_by === 'fund')
-    .reduce((acc, e) => acc + (Number(e[col]) || 0), 0);
-
-  const total = creditPerPerson * memberCount;
-  const remaining = total - spent;
-  const overSpent = remaining < 0;
-
-  return (
-    <section className="card-plush p-4">
-      <div className="flex items-center gap-3">
-        <img src={asset('/shared_wallet.png')} alt="Shared fund" className="w-12 h-12 object-contain shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-xs uppercase tracking-wider opacity-60">Shared Fund</p>
-          <p className="text-xs opacity-50 mt-0.5">
-            {fundCur} {perPerson.toLocaleString()} × {memberCount}
-          </p>
-        </div>
-        <div className="text-right shrink-0">
-          <p
-            className="text-xl font-bold"
-            style={{ color: overSpent ? 'var(--color-blush-deep)' : 'var(--color-mint-deep)' }}
-          >
-            {overSpent ? '-' : ''}{formatMoney(Math.abs(remaining), currency)}
-          </p>
-          <p className="text-xs opacity-50">
-            {overSpent ? 'over by' : 'left of'} {formatMoney(total, currency)}
-          </p>
-        </div>
-      </div>
     </section>
   );
 }

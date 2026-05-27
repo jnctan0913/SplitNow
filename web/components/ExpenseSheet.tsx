@@ -371,22 +371,20 @@ export function ExpenseSheet({
 
             <section className="space-y-2">
               <p className="text-xs uppercase tracking-wider opacity-60 px-1">Paid by</p>
-              {settings.fund_amount_per_person && (
-                <button
-                  onClick={() => setPaidBy('fund')}
-                  className={cn(
-                    'w-full card-plush flex items-center gap-3 p-3 transition-transform',
-                    isFund && 'scale-[1.01]',
-                  )}
-                  style={isFund ? { boxShadow: '0 0 0 3px var(--color-peach-deep), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
-                >
-                  <img src="/shared_wallet.png" alt="Shared fund" className="w-10 h-10 object-contain shrink-0" />
-                  <div className="text-left">
-                    <p className="text-sm font-bold">Shared Fund</p>
-                    <p className="text-xs opacity-60">Equal split, all members</p>
-                  </div>
-                </button>
-              )}
+              <button
+                onClick={() => setPaidBy('fund')}
+                className={cn(
+                  'w-full card-plush flex items-center gap-3 p-3 transition-transform',
+                  isFund && 'scale-[1.01]',
+                )}
+                style={isFund ? { boxShadow: '0 0 0 3px var(--color-peach-deep), 0 4px 16px -6px rgba(107,79,63,0.12)' } : undefined}
+              >
+                <img src="/shared_wallet.png" alt="Shared fund" className="w-10 h-10 object-contain shrink-0" />
+                <div className="text-left">
+                  <p className="text-sm font-bold">Shared Fund</p>
+                  <p className="text-xs opacity-60">Equal split, all members</p>
+                </div>
+              </button>
               <div className="grid grid-cols-3 gap-2">
                 {activeMembers.map((m) => {
                   const sel = paidBy === m.id;

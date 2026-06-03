@@ -176,6 +176,9 @@ export interface NewExpenseInput {
   amount: number;
   currency: CurrencyCode;
   paid_by: string;
+  // Present only when multiple members split the payment. Keys are member IDs,
+  // values are amounts in the expense's original currency.
+  payer_splits?: Record<string, number>;
   split_mode: SplitMode;
   split_data: Record<string, number>;
 }

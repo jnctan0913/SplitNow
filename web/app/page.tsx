@@ -14,6 +14,7 @@ import { formatMoney, shortMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { computeSettlement } from '@/lib/settlement';
 import { isPayment } from '@/lib/categories';
+import { asset } from '@/lib/asset';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -24,10 +25,18 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  // Local override for fund holder; initialized from settings on load.
+  const [fundHolder, setFundHolder] = useState('');
 
   const settlement: Settlement | null = useMemo(
-    () => (boot ? computeSettlement(boot.expenses, boot.members, currency, boot.rates, boot.settings) : null),
-    [boot, currency],
+    () =>
+      boot
+        ? computeSettlement(boot.expenses, boot.members, currency, boot.rates, {
+            ...boot.settings,
+            fund_holder_id: fundHolder || String(boot.settings.fund_holder_id ?? ''),
+          })
+        : null,
+    [boot, currency, fundHolder],
   );
 
   async function refresh() {
@@ -49,6 +58,9 @@ export default function Dashboard() {
     if (cached) {
       setBoot(cached);
       setMe(cached.members.find((m) => m.id === actorStore.get()) ?? null);
+      if (cached.settings.fund_holder_id && !fundHolder) {
+        setFundHolder(String(cached.settings.fund_holder_id));
+      }
       setLoading(false);
     }
     (async () => {
@@ -56,6 +68,9 @@ export default function Dashboard() {
         const b = await api.bootstrap();
         setBoot(b);
         setMe(b.members.find((m) => m.id === actorStore.get()) ?? null);
+        if (b.settings.fund_holder_id && !fundHolder) {
+          setFundHolder(String(b.settings.fund_holder_id));
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         if (!cached) setError(msg);
@@ -113,6 +128,12 @@ export default function Dashboard() {
         settlement={settlement}
         myId={me.id}
         onSettleUp={() => setPaymentOpen(true)}
+        members={boot.members}
+        fundHolder={fundHolder}
+        onFundHolderChange={(id) => {
+          setFundHolder(id);
+          if (id) api.updateSettings('fund_holder_id', id).catch(() => {});
+        }}
       />
 
       <ExpenseSheet
@@ -267,10 +288,16 @@ function SettlementList({
   settlement,
   myId,
   onSettleUp,
+  members,
+  fundHolder,
+  onFundHolderChange,
 }: {
   settlement: Settlement;
   myId: string;
   onSettleUp: () => void;
+  members: Member[];
+  fundHolder: string;
+  onFundHolderChange: (id: string) => void;
 }) {
   const grouped = new Map<string, { mascot: Member['mascot']; name: string; rows: typeof settlement.transfers }>();
   for (const t of settlement.transfers) {
@@ -281,6 +308,9 @@ function SettlementList({
       grouped.set(t.from, { mascot: t.from_mascot, name: t.from_name, rows: [t] });
     }
   }
+
+  const hasFundRemaining = settlement.fundRemaining != null && settlement.fundRemaining > 0;
+  const activeMembers = members.filter((m) => m.active !== false);
 
   return (
     <section>
@@ -294,6 +324,47 @@ function SettlementList({
           + Record payment
         </button>
       </div>
+
+      {/* Fund remaining: prompt for holder when unset, or show change link when set */}
+      {hasFundRemaining && (
+        <div className="card-plush p-3 mb-3 space-y-3">
+          <div className="flex items-center gap-3">
+            <img src={asset('/shared_wallet.png')} alt="Fund" className="h-9 w-9 object-contain shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold">Shared fund remaining</p>
+              <p className="text-xs opacity-60">
+                {formatMoney(settlement.fundRemaining!, settlement.currency)}
+                {fundHolder ? ' — returns folded into transfers' : ' — assign who is holding the cash'}
+              </p>
+            </div>
+            {fundHolder && (
+              <button
+                onClick={() => onFundHolderChange('')}
+                className="text-xs opacity-60 shrink-0"
+                style={{ textDecoration: 'underline' }}
+              >
+                Change
+              </button>
+            )}
+          </div>
+          {!fundHolder && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {activeMembers.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => onFundHolderChange(m.id)}
+                  className="card-plush flex flex-col items-center py-2 active:scale-95 transition-transform"
+                  style={{ background: 'var(--color-cream)' }}
+                >
+                  <Mascot name={m.mascot} size="sm" />
+                  <span className="text-xs font-semibold mt-1 truncate max-w-[64px]">{m.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {grouped.size === 0 ? (
         <p
           className="card-plush p-3 text-sm text-center opacity-70"

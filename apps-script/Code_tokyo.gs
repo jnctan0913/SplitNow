@@ -53,7 +53,7 @@ const EXPENSE_HEADERS = [
   'category', 'description',
   'amount', 'currency',
 ].concat(AMOUNT_COLS).concat([
-  'paid_by', 'split_mode', 'split_data',
+  'paid_by', 'payer_splits', 'split_mode', 'split_data',
   'last_edited_by', 'deleted_at',
 ]);
 
@@ -626,6 +626,7 @@ function addExpense_(expense, actor) {
       case 'amount':          return Number(expense.amount);
       case 'currency':        return expense.currency;
       case 'paid_by':         return expense.paid_by;
+      case 'payer_splits':    return expense.payer_splits ? JSON.stringify(expense.payer_splits) : '';
       case 'split_mode':      return expense.split_mode;
       case 'split_data':      return JSON.stringify(expense.split_data || {});
       case 'last_edited_by':  return actor || '';
@@ -654,6 +655,7 @@ function updateExpense_(id, fields, actor) {
   Object.keys(fields).forEach(k => {
     if (!EXPENSE_HEADERS.includes(k)) return;
     if (k === 'split_data') set(k, JSON.stringify(fields[k]));
+    else if (k === 'payer_splits') set(k, fields[k] ? JSON.stringify(fields[k]) : '');
     else set(k, fields[k]);
   });
 
@@ -687,7 +689,7 @@ function deleteExpense_(id, actor) {
 
 // Only fund settings are editable via the API. All other settings are
 // managed directly in the spreadsheet to avoid accidental overwrites.
-const EDITABLE_SETTINGS = ['fund_amount_per_person', 'fund_currency'];
+const EDITABLE_SETTINGS = ['fund_amount_per_person', 'fund_currency', 'fund_holder_id'];
 
 function updateSettings_(key, value) {
   if (!EDITABLE_SETTINGS.includes(key)) {
@@ -887,22 +889,79 @@ function computeSettlement_(currency) {
   const expenses = listExpenses_();
   const members = listMembers_();
   const totals = {};
-  members.forEach(m => totals[m.id] = 0);
+  members.forEach(function(m) { totals[m.id] = 0; });
 
   // Fund expenses are pre-funded communally in cash; skip them for settlement.
-  expenses.forEach(e => {
+  expenses.forEach(function(e) {
     if (e.paid_by === 'fund') return;
     const total = Number(e[col]) || 0;
-    totals[e.paid_by] = (totals[e.paid_by] || 0) + total;
+
+    // Credit payers. When payer_splits has multiple entries, distribute
+    // credit proportionally based on each payer's raw amount in original currency.
+    var credited = false;
+    if (e.payer_splits) {
+      try {
+        var ps = JSON.parse(e.payer_splits);
+        var psIds = Object.keys(ps);
+        if (psIds.length > 1) {
+          var rawTotal = psIds.reduce(function(a, id) { return a + (Number(ps[id]) || 0); }, 0);
+          if (rawTotal > 0) {
+            psIds.forEach(function(id) {
+              totals[id] = (totals[id] || 0) + total * (Number(ps[id]) / rawTotal);
+            });
+            credited = true;
+          }
+        }
+      } catch (_) {}
+    }
+    if (!credited) {
+      totals[e.paid_by] = (totals[e.paid_by] || 0) + total;
+    }
 
     const splits = computeShares_(e, total);
-    Object.keys(splits).forEach(mid => {
+    Object.keys(splits).forEach(function(mid) {
       totals[mid] = (totals[mid] || 0) - splits[mid];
     });
   });
 
   const dp = decimalsFor_(cur);
-  const balances = members.map(m => ({ id: m.id, name: m.name, mascot: m.mascot, net: round_(totals[m.id] || 0, dp) }));
+
+  // Fold remaining fund balance into settlement when fund_holder_id is set.
+  const settings = listSettings_();
+  const fundHolderId = settings.fund_holder_id ? String(settings.fund_holder_id) : '';
+  const fundAmountPerPerson = Number(settings.fund_amount_per_person) || 0;
+  const fundCurrency = settings.fund_currency ? String(settings.fund_currency) : '';
+  const N = members.length;
+
+  if (fundHolderId && fundAmountPerPerson && fundCurrency && N > 0 && (fundHolderId in totals)) {
+    const fundCol = 'amount_' + fundCurrency.toLowerCase();
+    const totalContributed = fundAmountPerPerson * N;
+    const totalSpent = listExpenses_()
+      .filter(function(e) { return e.paid_by === 'fund'; })
+      .reduce(function(acc, e) { return acc + (Number(e[fundCol]) || 0); }, 0);
+    const remainingInFundCur = totalContributed - totalSpent;
+
+    if (remainingInFundCur > 0) {
+      var remaining;
+      if (fundCurrency === cur) {
+        remaining = remainingInFundCur;
+      } else {
+        const rates = getRates_();
+        remaining = remainingInFundCur * (Number(rates[fundCurrency + cur]) || 1);
+      }
+      remaining = round_(remaining, dp);
+      const perPerson = round_(remaining / N, dp);
+      members.forEach(function(m) {
+        totals[m.id] = (totals[m.id] || 0) + perPerson;
+      });
+      totals[fundHolderId] = (totals[fundHolderId] || 0) - remaining;
+    }
+  }
+
+  // Greedy: largest creditor pays largest debtor
+  const balances = members.map(function(m) {
+    return { id: m.id, name: m.name, mascot: m.mascot, net: round_(totals[m.id] || 0, dp) };
+  });
   const transfers = greedyTransfers_(balances, dp);
   return { currency: cur, balances, transfers };
 }

@@ -10,7 +10,7 @@ export function computeSettlement(
   members: Member[],
   currency: CurrencyCode,
   rates?: Rates,
-  settings?: Settings,  // kept for API compat, no longer used
+  settings?: Settings,
 ): Settlement {
   const col = amountKey(currency);
   const totals: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
@@ -21,7 +21,30 @@ export function computeSettlement(
     // owes whom between members, so skip them entirely for settlement.
     if (e.paid_by === 'fund') continue;
     const total = Number(e[col]) || 0;
-    totals[e.paid_by] = (totals[e.paid_by] ?? 0) + total;
+
+    // Credit payers. When payer_splits is present and has multiple entries,
+    // distribute credit proportionally based on each payer's raw amount.
+    let credited = false;
+    if (e.payer_splits) {
+      try {
+        const ps = JSON.parse(e.payer_splits) as Record<string, number>;
+        const ids = Object.keys(ps);
+        if (ids.length > 1) {
+          const rawTotal = ids.reduce((a, id) => a + (Number(ps[id]) || 0), 0);
+          if (rawTotal > 0) {
+            for (const id of ids) {
+              totals[id] = (totals[id] ?? 0) + total * (Number(ps[id]) / rawTotal);
+            }
+            credited = true;
+          }
+        }
+      } catch {
+        // fall through to single-payer below
+      }
+    }
+    if (!credited) {
+      totals[e.paid_by] = (totals[e.paid_by] ?? 0) + total;
+    }
 
     const shares = computeShares(e, total, members);
     for (const id of Object.keys(shares)) {
@@ -30,6 +53,42 @@ export function computeSettlement(
   }
 
   const dp = currencyDecimals(currency);
+
+  // Compute remaining fund balance (in settlement currency). When a holder is
+  // set, fold the fund returns into the balance totals so the single greedy
+  // pass produces the globally minimal transfer set.
+  let fundRemaining: number | undefined;
+  const fundAmountPerPerson = Number(settings?.fund_amount_per_person) || 0;
+  const fundCurrency = settings?.fund_currency as CurrencyCode | undefined;
+  const activeMembers = members.filter((m) => m.active !== false);
+  const N = activeMembers.length;
+
+  if (fundAmountPerPerson > 0 && fundCurrency && N > 0) {
+    const fundCol = amountKey(fundCurrency);
+    const totalContributed = fundAmountPerPerson * N;
+    const totalSpent = expenses
+      .filter((e) => !e.deleted_at && e.paid_by === 'fund')
+      .reduce((acc, e) => acc + (Number(e[fundCol]) || 0), 0);
+    const remainingInFundCur = totalContributed - totalSpent;
+
+    if (remainingInFundCur > 0) {
+      const remaining =
+        fundCurrency === currency
+          ? remainingInFundCur
+          : remainingInFundCur * (rates?.[fundCurrency + currency] ?? 1);
+      fundRemaining = round(remaining, dp);
+
+      const holderId = settings?.fund_holder_id;
+      if (holderId && holderId in totals) {
+        const perPerson = round(fundRemaining / N, dp);
+        for (const m of activeMembers) {
+          totals[m.id] = (totals[m.id] ?? 0) + perPerson;
+        }
+        totals[holderId] = (totals[holderId] ?? 0) - fundRemaining;
+      }
+    }
+  }
+
   const balances: Balance[] = members.map((m) => ({
     id: m.id,
     name: m.name,
@@ -37,7 +96,7 @@ export function computeSettlement(
     net: round(totals[m.id] ?? 0, dp),
   }));
   const transfers = greedy(balances, dp);
-  return { currency, balances, transfers };
+  return { currency, balances, transfers, fundRemaining };
 }
 
 function computeShares(e: Expense, total: number, members: Member[]): Record<string, number> {

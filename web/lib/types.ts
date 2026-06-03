@@ -25,6 +25,10 @@ export interface Settings {
   // pooled wallet. Leave both blank to disable the feature entirely.
   fund_amount_per_person?: number;
   fund_currency?: string;
+  // Who is physically holding the remaining fund cash at trip end. When set,
+  // the remaining fund balance is folded into the greedy settlement so the
+  // holder's debt/credit absorbs the fund returns automatically.
+  fund_holder_id?: string;
 }
 
 // Pair keys are `${from}${to}` like 'JPYSGD'. Per-trip rate set is determined
@@ -42,6 +46,10 @@ export interface Expense {
   amount: number;
   currency: CurrencyCode;
   paid_by: string;
+  // JSON map of { memberId: amountInOriginalCurrency } when multiple people
+  // split the payment. When present, credits are distributed proportionally
+  // across payers; paid_by holds the primary payer for display/compat.
+  payer_splits?: string;
   split_mode: SplitMode;
   split_data: string;
   last_edited_by: string;
@@ -80,6 +88,10 @@ export interface Settlement {
   currency: CurrencyCode;
   balances: Balance[];
   transfers: Transfer[];
+  // Remaining fund balance in the settlement currency. Populated when
+  // fund_amount_per_person is set and remaining > 0. Used by the UI to
+  // prompt for a fund holder.
+  fundRemaining?: number;
 }
 
 export interface ItineraryItem {

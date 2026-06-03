@@ -75,7 +75,14 @@ export function ExpenseSheet({
   const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [date, setDate] = useState<string>('');
-  const [paidBy, setPaidBy] = useState<string>('');
+
+  // paidBy is an array of selected payer IDs. ['fund'] means the shared fund.
+  // A single member ID means the standard single-payer path.
+  // Multiple member IDs activate the multi-payer split UI below the payer grid.
+  const [paidBy, setPaidBy] = useState<string[]>([]);
+  const [payerMode, setPayerMode] = useState<'equal' | 'amount'>('equal');
+  const [payerAmounts, setPayerAmounts] = useState<Record<string, string>>({});
+
   const [mode, setMode] = useState<SplitMode>('equal');
   const [equalChecked, setEqualChecked] = useState<Record<string, boolean>>({});
   const [amountSplit, setAmountSplit] = useState<Record<string, string>>({});
@@ -99,8 +106,29 @@ export function ExpenseSheet({
       setCategory(expense.category ?? '');
       setDescription(expense.description ?? '');
       setDate(expense.date ?? todayISO());
-      setPaidBy(expense.paid_by ?? '');
       setMode(expense.split_mode);
+
+      // Restore payer state from payer_splits or paid_by
+      const existingPayerSplits = parseSplitData(expense.payer_splits ?? '');
+      const payerIds = Object.keys(existingPayerSplits);
+      if (expense.paid_by === 'fund') {
+        setPaidBy(['fund']);
+        setPayerMode('equal');
+        setPayerAmounts({});
+      } else if (payerIds.length > 1) {
+        setPaidBy(payerIds);
+        // Detect if payer split was equal (all amounts the same)
+        const vals = payerIds.map((id) => existingPayerSplits[id]!);
+        const isEqual = vals.every((v) => Math.abs(v - vals[0]!) < 0.01);
+        setPayerMode(isEqual ? 'equal' : 'amount');
+        const pAmts: Record<string, string> = {};
+        for (const id of payerIds) pAmts[id] = String(existingPayerSplits[id]);
+        setPayerAmounts(pAmts);
+      } else {
+        setPaidBy(expense.paid_by ? [expense.paid_by] : []);
+        setPayerMode('equal');
+        setPayerAmounts({});
+      }
 
       const data = parseSplitData(expense.split_data);
       const eq: Record<string, boolean> = {};
@@ -132,7 +160,9 @@ export function ExpenseSheet({
       setCategory(settings.categories[0] ?? '');
       setDescription('');
       setDate(clampDate(todayISO(), settings.trip_start, settings.trip_end));
-      setPaidBy('');
+      setPaidBy([]);
+      setPayerMode('equal');
+      setPayerAmounts({});
       setMode('equal');
       setEqualChecked(initialEq);
       setAmountSplit(initialAmt);
@@ -146,6 +176,10 @@ export function ExpenseSheet({
   const decimals = CURRENCIES[curr].decimalDigits;
   const eps = decimals === 0 ? 1 : 0.01;
 
+  const isFund = paidBy.length === 1 && paidBy[0] === 'fund';
+  const isMultiPayer = !isFund && paidBy.length > 1;
+
+  // Expense-split sums
   const amountSum = useMemo(
     () => activeMembers.reduce((acc, m) => acc + (Number(amountSplit[m.id]) || 0), 0),
     [amountSplit, activeMembers],
@@ -159,7 +193,32 @@ export function ExpenseSheet({
   const amountSumOk = Math.abs(amountDelta) < eps;
   const percentSumOk = Math.abs(percentDelta) < 0.01;
 
-  const isFund = paidBy === 'fund';
+  // Payer-split sum (only relevant when isMultiPayer + payerMode === 'amount')
+  const payerAmountSum = useMemo(
+    () => paidBy.reduce((acc, id) => acc + (Number(payerAmounts[id]) || 0), 0),
+    [paidBy, payerAmounts],
+  );
+  const payerAmountOk = Math.abs(payerAmountSum - totalAmount) < eps;
+
+  function togglePayer(memberId: string) {
+    if (isFund) {
+      // Switch from fund to member
+      setPaidBy([memberId]);
+      setPayerAmounts({});
+      return;
+    }
+    if (paidBy.includes(memberId)) {
+      // Don't allow deselecting the last payer
+      if (paidBy.length === 1) return;
+      const next = paidBy.filter((id) => id !== memberId);
+      setPaidBy(next);
+      const newAmts = { ...payerAmounts };
+      delete newAmts[memberId];
+      setPayerAmounts(newAmts);
+    } else {
+      setPaidBy([...paidBy, memberId]);
+    }
+  }
 
   function buildSplitData(): Record<string, number> {
     if (isFund) {
@@ -188,12 +247,30 @@ export function ExpenseSheet({
     return out;
   }
 
+  function buildPayerSplits(): Record<string, number> | undefined {
+    if (!isMultiPayer) return undefined;
+    const out: Record<string, number> = {};
+    if (payerMode === 'equal') {
+      const each = totalAmount / paidBy.length;
+      for (const id of paidBy) out[id] = each;
+    } else {
+      for (const id of paidBy) {
+        const v = Number(payerAmounts[id]) || 0;
+        if (v > 0) out[id] = v;
+      }
+    }
+    return out;
+  }
+
   function validate(splitData: Record<string, number>): string | null {
     if (!(totalAmount > 0)) return 'Enter an amount greater than zero';
     if (!curr) return 'Pick a currency';
     if (!category) return 'Pick a category';
-    if (!paidBy) return 'Pick who paid';
+    if (paidBy.length === 0) return 'Pick who paid';
     if (!date) return 'Pick a date';
+    if (isMultiPayer && payerMode === 'amount' && !payerAmountOk) {
+      return `Payer amounts must sum to ${formatMoney(totalAmount, curr)}`;
+    }
     if (!isFund) {
       if (Object.keys(splitData).length === 0) return 'Pick at least one person to split with';
       if (mode === 'amount' && !amountSumOk) return `Amounts must sum to ${formatMoney(totalAmount, curr)}`;
@@ -210,13 +287,15 @@ export function ExpenseSheet({
       setErrorMsg(err);
       return;
     }
+    const payerSplits = buildPayerSplits();
     const payload: NewExpenseInput = {
       date,
       category,
       description: description.trim() || undefined,
       amount: totalAmount,
       currency: curr,
-      paid_by: paidBy,
+      paid_by: isFund ? 'fund' : paidBy[0]!,
+      payer_splits: payerSplits,
       split_mode: isFund ? 'equal' : mode,
       split_data: splitData,
     };
@@ -370,15 +449,16 @@ export function ExpenseSheet({
               />
             </section>
 
+            {/* Payer selection */}
             <section className="space-y-2">
               <p className="text-xs uppercase tracking-wider opacity-60 px-1">Paid by</p>
               <div className="grid grid-cols-3 gap-2">
                 {activeMembers.map((m) => {
-                  const sel = paidBy === m.id;
+                  const sel = paidBy.includes(m.id);
                   return (
                     <button
                       key={m.id}
-                      onClick={() => setPaidBy(m.id)}
+                      onClick={() => togglePayer(m.id)}
                       className={cn(
                         'card-plush flex flex-col items-center py-3 transition-transform',
                         sel && 'scale-[1.02]',
@@ -391,7 +471,11 @@ export function ExpenseSheet({
                   );
                 })}
                 <button
-                  onClick={() => setPaidBy('fund')}
+                  onClick={() => {
+                    setPaidBy(['fund']);
+                    setPayerMode('equal');
+                    setPayerAmounts({});
+                  }}
                   className={cn(
                     'card-plush flex flex-col items-center py-3 transition-transform',
                     isFund && 'scale-[1.02]',
@@ -406,6 +490,82 @@ export function ExpenseSheet({
               </div>
             </section>
 
+            {/* Multi-payer split: how did they split the payment? */}
+            {isMultiPayer && (
+              <section className="card-plush p-4 space-y-3">
+                <p className="text-xs uppercase tracking-wider opacity-60">How did they split the payment?</p>
+                <div className="flex p-1 gap-1 rounded-[var(--radius-pillow)]" style={{ background: 'var(--color-cream)' }}>
+                  {(['equal', 'amount'] as const).map((pm) => (
+                    <button
+                      key={pm}
+                      onClick={() => setPayerMode(pm)}
+                      className={cn(
+                        'flex-1 py-2 rounded-[var(--radius-pillow)] text-sm font-semibold transition-colors',
+                        payerMode === pm ? 'shadow-sm' : 'opacity-60',
+                      )}
+                      style={payerMode === pm ? { background: 'var(--color-peach)' } : undefined}
+                    >
+                      {pm === 'equal' ? 'Equal' : 'By amount'}
+                    </button>
+                  ))}
+                </div>
+                {payerMode === 'equal' ? (
+                  <div className="space-y-1">
+                    {paidBy.map((id) => {
+                      const m = activeMembers.find((x) => x.id === id);
+                      if (!m) return null;
+                      const each = totalAmount > 0 ? totalAmount / paidBy.length : 0;
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center gap-3 px-2 py-2 rounded-[var(--radius-pillow)]"
+                          style={{ background: 'var(--color-cream)' }}
+                        >
+                          <Mascot name={m.mascot} size="sm" />
+                          <span className="flex-1 text-sm font-semibold">{m.name}</span>
+                          <span className="text-sm opacity-60">{each > 0 ? formatMoney(each, curr) : '—'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {paidBy.map((id) => {
+                      const m = activeMembers.find((x) => x.id === id);
+                      if (!m) return null;
+                      return (
+                        <div key={id} className="flex items-center gap-3 px-2 py-1">
+                          <Mascot name={m.mascot} size="sm" />
+                          <span className="flex-1 text-sm font-semibold">{m.name}</span>
+                          <input
+                            inputMode="decimal"
+                            type="number"
+                            step={decimals === 0 ? '1' : '0.01'}
+                            min="0"
+                            placeholder="0"
+                            value={payerAmounts[id] ?? ''}
+                            onChange={(e) => setPayerAmounts({ ...payerAmounts, [id]: e.target.value })}
+                            className="w-24 text-right bg-transparent outline-none px-2 py-1 rounded-[var(--radius-pillow)]"
+                            style={{ background: 'var(--color-cream)' }}
+                          />
+                        </div>
+                      );
+                    })}
+                    <div
+                      className="flex items-center justify-between px-2 pt-2 text-xs"
+                      style={{ color: payerAmountOk ? 'var(--color-mint-deep)' : 'var(--color-blush-deep)' }}
+                    >
+                      <span className="opacity-70">Sum</span>
+                      <span className="font-semibold">
+                        {formatMoney(payerAmountSum, curr)} / {formatMoney(totalAmount, curr)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Expense split */}
             <section className="space-y-3">
               <p className="text-xs uppercase tracking-wider opacity-60 px-1">Split</p>
               {isFund ? (

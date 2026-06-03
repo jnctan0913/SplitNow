@@ -311,6 +311,7 @@ function SettlementList({
 
   const hasFundRemaining = settlement.fundRemaining != null && settlement.fundRemaining > 0;
   const activeMembers = members.filter((m) => m.active !== false);
+  const [fundExpanded, setFundExpanded] = useState(false);
 
   return (
     <section>
@@ -325,41 +326,54 @@ function SettlementList({
         </button>
       </div>
 
-      {/* Fund remaining: prompt for holder when unset, or show change link when set */}
+      {/* Fund remaining: collapsed by default, expands to show member picker */}
       {hasFundRemaining && (
-        <div className="card-plush p-3 mb-3 space-y-3">
-          <div className="flex items-center gap-3">
+        <div className="card-plush mb-3 overflow-hidden">
+          <button
+            onClick={() => setFundExpanded((v) => !v)}
+            className="w-full flex items-center gap-3 p-3"
+          >
             <img src={asset('/shared_wallet.png')} alt="Fund" className="h-9 w-9 object-contain shrink-0" />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-left">
               <p className="text-xs font-semibold">Shared fund remaining</p>
               <p className="text-xs opacity-60">
                 {formatMoney(settlement.fundRemaining!, settlement.currency)}
-                {fundHolder ? ' — returns folded into transfers' : ' — assign who is holding the cash'}
+                {fundHolder ? ' — returns folded into transfers' : ' — tap to assign holder'}
               </p>
             </div>
-            {fundHolder && (
-              <button
-                onClick={() => onFundHolderChange('')}
-                className="text-xs opacity-60 shrink-0"
-                style={{ textDecoration: 'underline' }}
-              >
-                Change
-              </button>
-            )}
-          </div>
-          {!fundHolder && (
-            <div className="grid grid-cols-3 gap-1.5">
-              {activeMembers.map((m) => (
+            <span
+              className="text-xs opacity-40 shrink-0 transition-transform duration-200"
+              style={{ transform: fundExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+            >
+              ▾
+            </span>
+          </button>
+
+          {fundExpanded && (
+            <div className="px-3 pb-3 space-y-2">
+              {fundHolder ? (
                 <button
-                  key={m.id}
-                  onClick={() => onFundHolderChange(m.id)}
-                  className="card-plush flex flex-col items-center py-2 active:scale-95 transition-transform"
-                  style={{ background: 'var(--color-cream)' }}
+                  onClick={() => { onFundHolderChange(''); }}
+                  className="text-xs opacity-60 w-full text-left"
+                  style={{ textDecoration: 'underline' }}
                 >
-                  <Mascot name={m.mascot} size="sm" />
-                  <span className="text-xs font-semibold mt-1 truncate max-w-[64px]">{m.name}</span>
+                  Clear holder
                 </button>
-              ))}
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {activeMembers.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => { onFundHolderChange(m.id); setFundExpanded(false); }}
+                      className="card-plush flex flex-col items-center py-2 active:scale-95 transition-transform"
+                      style={{ background: 'var(--color-cream)' }}
+                    >
+                      <Mascot name={m.mascot} size="sm" />
+                      <span className="text-xs font-semibold mt-1 truncate max-w-[64px]">{m.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

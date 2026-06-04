@@ -10,6 +10,8 @@ export const MASCOT_PALETTE: Record<Mascot, { bg: string; fg: string; accent: st
   CookieAnn:  { bg: '#FFE9A8', fg: '#7A5A2A', accent: '#FFCCD5' },
   OluMel:     { bg: '#9DD0AC', fg: '#3F5A3F', accent: '#FFE9A8' },
   LinaBell:   { bg: '#FFCCD5', fg: '#7A4055', accent: '#D8C8E8' },
+  Mickey:     { bg: '#E8E0D8', fg: '#3A2A2A', accent: '#FFCCD5' },
+  Minnie:     { bg: '#FFD0DC', fg: '#7A2040', accent: '#FFE9A8' },
 };
 
 export const mascotEmoji: Record<Mascot, string> = {
@@ -20,6 +22,8 @@ export const mascotEmoji: Record<Mascot, string> = {
   CookieAnn:  'C',
   OluMel:     'O',
   LinaBell:   'L',
+  Mickey:     'Mi',
+  Minnie:     'Mn',
 };
 
 // Per-mascot framing. translateY shifts the image vertically inside the circle
@@ -33,4 +37,6 @@ export const MASCOT_IMAGE: Partial<Record<Mascot, { src: string; scale: number; 
   OluMel:     { src: '/mascots/olumel.png',     scale: 1.4,  translateY: '12%' },
   LinaBell:   { src: '/mascots/linabell.png',   scale: 1.45, translateY: '12%' },
   Gelatoni:   { src: '/mascots/gelatoni.png',   scale: 1.45, translateY: '10%' },
+  Mickey:     { src: '/mascots/mickey.png',     scale: 1.45, translateY: '8%'  },
+  Minnie:     { src: '/mascots/minnie.png',     scale: 1.45, translateY: '8%'  },
 };

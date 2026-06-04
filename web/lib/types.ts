@@ -2,7 +2,7 @@ import type { CurrencyCode } from './currency';
 
 export type SplitMode = 'equal' | 'amount' | 'percent';
 
-export type Mascot = 'Duffy' | 'ShellieMay' | 'Gelatoni' | 'StellaLou' | 'CookieAnn' | 'OluMel' | 'LinaBell';
+export type Mascot = 'Duffy' | 'ShellieMay' | 'Gelatoni' | 'StellaLou' | 'CookieAnn' | 'OluMel' | 'LinaBell' | 'Mickey' | 'Minnie';
 
 export interface Member {
   id: string;

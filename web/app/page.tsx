@@ -31,10 +31,17 @@ export default function Dashboard() {
   const settlement: Settlement | null = useMemo(
     () =>
       boot
-        ? computeSettlement(boot.expenses, boot.members, currency, boot.rates, {
-            ...boot.settings,
-            fund_holder_id: fundHolder || String(boot.settings.fund_holder_id ?? ''),
-          })
+        ? computeSettlement(
+            boot.expenses,
+            boot.members,
+            currency,
+            boot.rates,
+            {
+              ...boot.settings,
+              fund_holder_id: fundHolder || String(boot.settings.fund_holder_id ?? ''),
+            },
+            trip.defaultCurrency,
+          )
         : null,
     [boot, currency, fundHolder],
   );

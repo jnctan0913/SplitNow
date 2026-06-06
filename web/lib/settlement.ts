@@ -11,8 +11,14 @@ export function computeSettlement(
   currency: CurrencyCode,
   rates?: Rates,
   settings?: Settings,
+  // When provided, all math runs in this currency and results are converted to
+  // `currency` for display. This keeps who-owes-whom stable across currency
+  // toggles, and fixes split_mode:'amount' expenses whose split_data values
+  // are in the original expense currency (not the display currency).
+  settlementCurrency?: CurrencyCode,
 ): Settlement {
-  const col = amountKey(currency);
+  const mathCur = settlementCurrency ?? currency;
+  const col = amountKey(mathCur);
   const totals: Record<string, number> = Object.fromEntries(members.map((m) => [m.id, 0]));
 
   for (const e of expenses) {
@@ -52,12 +58,12 @@ export function computeSettlement(
     }
   }
 
-  const dp = currencyDecimals(currency);
+  const mathDp = currencyDecimals(mathCur);
 
-  // Compute remaining fund balance (in settlement currency). When a holder is
-  // set, fold the fund returns into the balance totals so the single greedy
-  // pass produces the globally minimal transfer set.
-  let fundRemaining: number | undefined;
+  // Compute remaining fund balance in mathCur. When a holder is set, fold the
+  // fund returns into the balance totals so the single greedy pass produces
+  // the globally minimal transfer set.
+  let fundRemainingInMathCur: number | undefined;
   const fundAmountPerPerson = Number(settings?.fund_amount_per_person) || 0;
   const fundCurrency = settings?.fund_currency as CurrencyCode | undefined;
   const activeMembers = members.filter((m) => m.active !== false);
@@ -73,29 +79,47 @@ export function computeSettlement(
 
     if (remainingInFundCur > 0) {
       const remaining =
-        fundCurrency === currency
+        fundCurrency === mathCur
           ? remainingInFundCur
-          : remainingInFundCur * (rates?.[fundCurrency + currency] ?? 1);
-      fundRemaining = round(remaining, dp);
+          : remainingInFundCur * (rates?.[fundCurrency + mathCur] ?? 1);
+      fundRemainingInMathCur = round(remaining, mathDp);
 
       const holderId = settings?.fund_holder_id;
       if (holderId && holderId in totals) {
-        const perPerson = round(fundRemaining / N, dp);
+        const perPerson = round(fundRemainingInMathCur / N, mathDp);
         for (const m of activeMembers) {
           totals[m.id] = (totals[m.id] ?? 0) + perPerson;
         }
-        totals[holderId] = (totals[holderId] ?? 0) - fundRemaining;
+        totals[holderId] = (totals[holderId] ?? 0) - fundRemainingInMathCur;
       }
     }
   }
 
-  const balances: Balance[] = members.map((m) => ({
+  const balancesInMathCur: Balance[] = members.map((m) => ({
     id: m.id,
     name: m.name,
     mascot: m.mascot,
-    net: round(totals[m.id] ?? 0, dp),
+    net: round(totals[m.id] ?? 0, mathDp),
   }));
-  const transfers = greedy(balances, dp);
+  const transfersInMathCur = greedy(balancesInMathCur, mathDp);
+
+  // Convert math-currency amounts to display currency for output.
+  const displayDp = currencyDecimals(currency);
+  const convRate = mathCur === currency ? 1 : (rates?.[mathCur + currency] ?? 1);
+
+  const balances = balancesInMathCur.map((b) => ({
+    ...b,
+    net: round(b.net * convRate, displayDp),
+  }));
+  const transfers = transfersInMathCur.map((t) => ({
+    ...t,
+    amount: round(t.amount * convRate, displayDp),
+  }));
+  const fundRemaining =
+    fundRemainingInMathCur != null
+      ? round(fundRemainingInMathCur * convRate, displayDp)
+      : undefined;
+
   return { currency, balances, transfers, fundRemaining };
 }
 
@@ -115,7 +139,13 @@ function computeShares(e: Expense, total: number, members: Member[]): Record<str
     return out;
   }
   if (e.split_mode === 'amount') {
-    for (const id of Object.keys(split)) out[id] = Number(split[id]) || 0;
+    // split_data values are in the original expense currency, not the
+    // settlement currency. Normalise by the original total so each person's
+    // share scales correctly with whatever settlement currency is in use.
+    const origTotal = Number(e.amount) || 0;
+    for (const id of Object.keys(split)) {
+      out[id] = origTotal > 0 ? total * (Number(split[id]) / origTotal) : 0;
+    }
     return out;
   }
   if (e.split_mode === 'percent') {

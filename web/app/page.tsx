@@ -46,6 +46,26 @@ export default function Dashboard() {
     [boot, currency, fundHolder],
   );
 
+  // Settlement-currency (defaultCurrency) figures, independent of the display
+  // toggle. Used to pre-fill settle-up so a payment zeroes the balance exactly.
+  const settlementBase: Settlement | null = useMemo(
+    () =>
+      boot
+        ? computeSettlement(
+            boot.expenses,
+            boot.members,
+            trip.defaultCurrency,
+            boot.rates,
+            {
+              ...boot.settings,
+              fund_holder_id: fundHolder || String(boot.settings.fund_holder_id ?? ''),
+            },
+            trip.defaultCurrency,
+          )
+        : null,
+    [boot, fundHolder],
+  );
+
   async function refresh() {
     try {
       const b = await api.bootstrap();
@@ -107,11 +127,13 @@ export default function Dashboard() {
 
   // Pre-fill the settle-up sheet from the suggested transfer that involves the
   // current user (debtor first, then creditor), falling back to the largest
-  // outstanding transfer.
+  // outstanding transfer. Use the settlement-currency figures so the recorded
+  // payment cancels the balance exactly regardless of the display toggle.
+  const suggestSource = settlementBase ?? settlement;
   const suggested =
-    settlement.transfers.find((t) => t.from === me.id) ??
-    settlement.transfers.find((t) => t.to === me.id) ??
-    settlement.transfers[0] ??
+    suggestSource.transfers.find((t) => t.from === me.id) ??
+    suggestSource.transfers.find((t) => t.to === me.id) ??
+    suggestSource.transfers[0] ??
     null;
 
   return (
@@ -159,6 +181,7 @@ export default function Dashboard() {
         members={boot.members}
         settings={boot.settings}
         currency={currency}
+        rates={boot.rates}
         defaultFrom={suggested?.from ?? me.id}
         defaultTo={suggested?.to}
         defaultAmount={suggested?.amount}

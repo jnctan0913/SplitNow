@@ -175,6 +175,7 @@ export default function ExpensesPage() {
         members={boot.members}
         settings={boot.settings}
         currency={currency}
+        rates={boot.rates}
       />
     </div>
   );

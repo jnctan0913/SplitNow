@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Trash2, X } from 'lucide-react';
 import { api, type NewExpenseInput } from '@/lib/api';
-import { CURRENCIES, isCurrencyCode, type CurrencyCode } from '@/lib/currency';
+import { CURRENCIES, amountKey, type CurrencyCode } from '@/lib/currency';
+import { formatMoney } from '@/lib/format';
 import { trip } from '@/lib/trips';
 import { Mascot } from '@/components/Mascot';
 import { cn } from '@/lib/utils';
 import { PAYMENT_CATEGORY } from '@/lib/categories';
-import type { Expense, Member, Settings } from '@/lib/types';
+import type { Expense, Member, Settings, Rates } from '@/lib/types';
 
 interface Props {
   open: boolean;
@@ -17,6 +18,7 @@ interface Props {
   members: Member[];
   settings: Settings;
   currency: CurrencyCode;
+  rates: Rates;
   payment?: Expense;
   defaultFrom?: string;
   defaultTo?: string;
@@ -56,7 +58,7 @@ export function PaymentSheet({
   onSaved,
   members,
   settings,
-  currency,
+  rates,
   payment,
   defaultFrom,
   defaultTo,
@@ -65,10 +67,14 @@ export function PaymentSheet({
   const isEdit = !!payment;
   const activeMembers = useMemo(() => members.filter((m) => m.active !== false), [members]);
 
+  // Settle-up is always denominated in the trip's settlement currency so a
+  // payment cancels a member's balance exactly. Paying in a different physical
+  // currency is a display hint only (see equivalents below), not stored.
+  const denom = trip.defaultCurrency;
+
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
-  const [curr, setCurr] = useState<CurrencyCode>(currency);
   const [date, setDate] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -84,22 +90,27 @@ export function PaymentSheet({
     if (payment) {
       setFrom(payment.paid_by ?? '');
       setTo(recipientFromSplit(payment.split_data));
-      setAmount(payment.amount ? String(payment.amount) : '');
-      setCurr(isCurrencyCode(payment.currency) ? payment.currency : currency);
+      // Legacy payments may be stored in a non-settlement currency; use the
+      // snapshot in the settlement currency so editing keeps balances exact.
+      const denomVal = Number(payment[amountKey(denom)]) || Number(payment.amount) || 0;
+      setAmount(denomVal ? String(denomVal) : '');
       setDate(payment.date || clampDate(todayISO(), settings.trip_start, settings.trip_end));
     } else {
       setFrom(defaultFrom ?? '');
       setTo(defaultTo ?? '');
       setAmount(defaultAmount && defaultAmount > 0 ? String(defaultAmount) : '');
-      setCurr(currency);
       setDate(clampDate(todayISO(), settings.trip_start, settings.trip_end));
     }
     setErrorMsg(null);
     setConfirmDelete(false);
-  }, [open, payment, defaultFrom, defaultTo, defaultAmount, currency, settings]);
+  }, [open, payment, defaultFrom, defaultTo, defaultAmount, denom, settings]);
 
-  const decimals = CURRENCIES[curr].decimalDigits;
+  const decimals = CURRENCIES[denom].decimalDigits;
   const total = Number(amount) || 0;
+
+  const equivalents = trip.currencies
+    .filter((c) => c !== denom && rates[denom + c])
+    .map((c) => formatMoney(total * rates[denom + c]!, c));
 
   const fromMember = activeMembers.find((m) => m.id === from);
   const toMember = activeMembers.find((m) => m.id === to);
@@ -124,7 +135,7 @@ export function PaymentSheet({
       date,
       category: PAYMENT_CATEGORY,
       amount: total,
-      currency: curr,
+      currency: denom,
       paid_by: from,
       split_mode: 'amount',
       split_data: { [to]: total },
@@ -278,7 +289,10 @@ export function PaymentSheet({
             </section>
 
             <section className="card-plush p-4 space-y-3">
-              <p className="text-xs uppercase tracking-wider opacity-60">Amount</p>
+              <div className="flex items-baseline justify-between">
+                <p className="text-xs uppercase tracking-wider opacity-60">Amount</p>
+                <span className="text-xs font-semibold opacity-60">{CURRENCIES[denom].symbol} {denom}</span>
+              </div>
               <input
                 inputMode="decimal"
                 type="number"
@@ -289,21 +303,9 @@ export function PaymentSheet({
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full text-4xl font-bold bg-transparent outline-none"
               />
-              <div className="flex p-1 gap-1 rounded-[var(--radius-pillow)]" style={{ background: 'var(--color-cream)' }}>
-                {trip.currencies.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setCurr(c)}
-                    className={cn(
-                      'flex-1 py-2 rounded-[var(--radius-pillow)] text-sm font-semibold transition-colors',
-                      curr === c ? 'shadow-sm' : 'opacity-60',
-                    )}
-                    style={curr === c ? { background: 'var(--color-peach)' } : undefined}
-                  >
-                    {CURRENCIES[c].symbol} {c}
-                  </button>
-                ))}
-              </div>
+              {total > 0 && equivalents.length > 0 && (
+                <p className="text-xs opacity-60">≈ hand over {equivalents.join(' · ')}</p>
+              )}
             </section>
 
             <section className="card-plush p-4 space-y-2">

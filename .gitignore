@@ -45,3 +45,8 @@ assets/
 
 # original spreadsheet (kept locally only)
 Tokyo_26th_May_-_2nd_June_2026.xlsx
+
+# trip data and internal notes (kept locally only, not for the shared repo)
+STATE.md
+apps-script/Code_tokyo.gs
+scripts/cleaned_itinerary.json

@@ -12,7 +12,7 @@ Mobile-first webapp to track shared travel expenses across multiple currencies (
 ## Data model (mirrors the Expenses sheet)
 
 - **Trip**: name, start/end date, base currency, members[]
-- **Member**: name (e.g. Careen, Evelyn, Cheok, Qi Hui, Wan Qian)
+- **Member**: name (one per traveler)
 - **Expense**: date, day#, category (Accommodation, Transport, Entertainment, Food, Other), description, amount, currency, paid_by, split_among[] (default = all members), fx_rate_to_base
 - **Settlement**: derived (greedy creditor-debtor matching), not stored
 

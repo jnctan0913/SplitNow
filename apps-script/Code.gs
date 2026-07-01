@@ -11,33 +11,27 @@
  *   7. Deploy -> New deployment -> Web app
  *      Execute as: Me
  *      Who has access: Anyone
- *      Copy the /exec URL into the GHA secret for this trip
- *      (e.g. SHEETS_API_URL for tokyo, SHEETS_API_URL_CHINA for china).
+ *      Copy the /exec URL and set it as NEXT_PUBLIC_SHEETS_API_URL
+ *      (in web/.env.local locally, or as your deploy secret).
  *   8. After any code change, Deploy -> Manage deployments -> Edit -> New version.
- *
- * Note: Tokyo's existing deployment runs an older hardcoded version of this
- * file (JPY/SGD/MYR baked in). Don't redeploy Tokyo unless you intentionally
- * want to migrate it to this currency-config-driven version. The column
- * conventions are identical, so a migration would be safe but not required.
  */
 
 // =====================================================================
 // TRIP CONFIG - edit these per trip
 // =====================================================================
 
-const TRIP_CURRENCIES = ['CNY', 'SGD', 'MYR']; // default currency = first
+const TRIP_CURRENCIES = ['SGD', 'MYR', 'JPY']; // default currency = first; edit for your trip
+// Rows: [id, name, mascot, hexColor, active]. Mascot must be one of:
+// Duffy, ShellieMay, Gelatoni, StellaLou, CookieAnn, OluMel, LinaBell.
 const DEFAULT_MEMBERS = [
-  ['m1', 'Careen',    'StellaLou',  '#D8C8E8', true],
-  ['m2', 'Justina',   'LinaBell',   '#FFCCD5', true],
-  ['m3', 'Irene',     'ShellieMay', '#F8C8C8', true],
-  ['m4', 'Justin',    'OluMel',     '#C8E6D0', true],
-  ['m5', 'Lily',      'CookieAnn',  '#FFE9A8', true],
-  ['m6', 'Catherine', 'Gelatoni',   '#A8DDF0', true],
+  ['m1', 'Member 1', 'StellaLou',  '#D8C8E8', true],
+  ['m2', 'Member 2', 'LinaBell',   '#FFCCD5', true],
+  ['m3', 'Member 3', 'ShellieMay', '#F8C8C8', true],
 ];
 const TRIP_INFO = {
-  name:  'China Jun 2026',
-  start: '2026-06-13',
-  end:   '2026-06-27',
+  name:  'My Trip',
+  start: '2026-01-01',
+  end:   '2026-01-07',
 };
 
 // =====================================================================
